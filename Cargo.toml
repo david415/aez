@@ -1,0 +1,15 @@
+[package]
+name = "aez"
+version = "0.0.0"
+authors = ["David Stainton <dawuud@riseup.net>"]
+description = "Rust wrapper for AEZ wide block cipher written in amd64 assembler."
+homepage = "https://github.com/david415/aez"
+repository = "https://github.com/david415/aez"
+documentation = "https://docs.rs/aez/"
+readme = "README.md"
+keywords = ["cryptography", "aez"]
+license = "AGPL-3.0-only"
+links = "aez"
+build = "build.rs"
+
+[dependencies]
