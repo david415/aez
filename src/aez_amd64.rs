@@ -17,10 +17,19 @@
 extern crate libc;
 
 use self::libc::c_int;
+use std::ptr::copy_nonoverlapping;
 
 pub const BLOCK_SIZE: usize = 16;
 pub const EXTRACTED_KEY_SIZE: usize = 3 * 16;
+const DBL_CONSTS: [u8; 32] = [
+        // PSHUFB constant
+	0x0f, 0x0e, 0x0d, 0x0c, 0x0b, 0x0a, 0x09, 0x08,
+	0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0x00,
 
+	// Mask constant
+	0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
+	0x01, 0x00, 0x00, 0x00, 0x87, 0x00, 0x00, 0x00,
+];
 
 extern "C" {
     fn cpuidAMD64(cpu_params: *const u32);
@@ -71,13 +80,28 @@ pub fn aez_aes_10_amd64_aesni(l: &[u8], k: &[u8], src: &[u8], dst: &mut[u8]) {
 
 pub fn aez_core_pass_1_amd64_aesni(src: &[u8], dst: &mut [u8], x: &[u8], i: &[u8], l: &[u8], k: &[u8], consts: &[u8], sz: usize) {
     unsafe {
-        aezCorePass1AMD64AESNI(&src[0] as *const u8, &mut dst[0] as *mut u8, &x[0] as *const u8, &i[0] as *const u8, &l[0] as *const u8, &k[0] as *const u8, &consts[0] as *const u8, sz as c_int);
+        aezCorePass1AMD64AESNI(&src[0] as *const u8,
+                               &mut dst[0] as *mut u8,
+                               &x[0] as *const u8,
+                               &i[0] as *const u8,
+                               &l[0] as *const u8,
+                               &k[0] as *const u8,
+                               &consts[0] as *const u8,
+                               sz as c_int);
     }
 }
 
 pub fn aez_core_pass_2_amd64_aesni(dst: &mut [u8], y: &[u8], s: &[u8], j: &[u8], i: &[u8], l: &[u8], k: &[u8], consts: &[u8], sz: usize) {
     unsafe {
-        aezCorePass2AMD64AESNI(&mut dst[0] as *mut u8, &y[0] as *const u8, &s[0] as *const u8, &j[0] as *const u8, &i[0] as *const u8, &l[0] as *const u8, &k[0] as *const u8, &consts[0] as *const u8, sz as c_int);
+        aezCorePass2AMD64AESNI(&mut dst[0] as *mut u8,
+                               &y[0] as *const u8,
+                               &s[0] as *const u8,
+                               &j[0] as *const u8,
+                               &i[0] as *const u8,
+                               &l[0] as *const u8,
+                               &k[0] as *const u8,
+                               &consts[0] as *const u8,
+                               sz as c_int);
     }
 }
 
@@ -89,12 +113,63 @@ pub fn xor_bytes_4x16(a: &[u8; BLOCK_SIZE], b: &[u8; BLOCK_SIZE], c: &[u8; BLOCK
     xor_bytes_4x16_amd64_sse2(a, b, c, d, dst);
 }
 
+#[derive(Clone)]
 pub struct RoundAesni {
     keys: [u8; EXTRACTED_KEY_SIZE],
 }
 
+impl Default for RoundAesni {
+    fn default() -> RoundAesni {
+        RoundAesni{
+            keys: [0u8; EXTRACTED_KEY_SIZE],
+        }
+    }
+}
+
 impl RoundAesni {
-    pub fn reset(&mut self) {}
+    pub fn new(keys: [u8; EXTRACTED_KEY_SIZE]) -> RoundAesni {
+        RoundAesni {
+            keys: keys,
+        }
+    }
+
+    pub fn reset(&mut self) {
+        let zeros = vec![0u8; EXTRACTED_KEY_SIZE];
+        unsafe {
+            copy_nonoverlapping(&zeros, &mut self.keys.to_vec(), EXTRACTED_KEY_SIZE);
+        }
+    }
+
+    pub fn aes4(&self, j: &[u8], i: &[u8], l: &[u8], src: &[u8], dst: &mut [u8]) {
+        aez_aes_4_amd64_aesni(j, i, l, &self.keys, src, dst);
+    }
+
+    pub fn aes10(&self, l: &[u8], src: &[u8], dst: &mut [u8]) {
+        aez_aes_10_amd64_aesni(l, &self.keys, src, dst);
+    }
+}
+
+
+#[derive(Clone, Default)]
+struct Estate {
+    i: [[u8; 16]; 2],
+    j: [[u8; 16]; 3],
+    l: [[u8; 16]; 8],
+    aes: RoundAesni,
+}
+
+impl Estate {
+    pub fn new(key: &[u8]) -> Estate {
+        Estate::default()
+    }
+
+    pub fn aez_core_pass1(&self, src: &[u8], dst: &mut [u8], x: &[u8; BLOCK_SIZE], sz: usize) {
+        aez_core_pass_1_amd64_aesni(src, dst, x, &self.i[0], &self.l[0], &self.aes.keys, &DBL_CONSTS, sz)
+    }
+
+    pub fn aez_core_pass2(&self, src: &[u8], dst: &mut [u8], y: &[u8; BLOCK_SIZE], s: &[u8; BLOCK_SIZE], sz: usize) {
+        aez_core_pass_2_amd64_aesni(dst, y, s, &self.j[0], &self.i[1], &self.l[0], &self.aes.keys, &DBL_CONSTS, sz);
+    }
 }
 
 #[cfg(test)]
