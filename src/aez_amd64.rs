@@ -17,11 +17,12 @@
 extern crate libc;
 
 use self::libc::c_int;
-use std::ptr::copy_nonoverlapping;
+use super::aez::memwipe;
 
 pub const BLOCK_SIZE: usize = 16;
 pub const EXTRACTED_KEY_SIZE: usize = 3 * 16;
-const DBL_CONSTS: [u8; 32] = [
+
+pub const DBL_CONSTS: [u8; 32] = [
         // PSHUFB constant
 	0x0f, 0x0e, 0x0d, 0x0c, 0x0b, 0x0a, 0x09, 0x08,
 	0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0x00,
@@ -113,9 +114,19 @@ pub fn xor_bytes_4x16(a: &[u8; BLOCK_SIZE], b: &[u8; BLOCK_SIZE], c: &[u8; BLOCK
     xor_bytes_4x16_amd64_sse2(a, b, c, d, dst);
 }
 
+pub fn supports_aesni() -> bool {
+    let aesni_bit = 1 << 25;
+
+    // Check for AES-NI support.
+    // CPUID.(EAX=01H, ECX=0H):ECX.AESNI[bit 25]==1
+    let mut regs = vec![1u32; 4];
+    cpuid_amd64(&mut regs[0]);
+    regs[2] & aesni_bit != 0
+}
+
 #[derive(Clone)]
 pub struct RoundAesni {
-    keys: [u8; EXTRACTED_KEY_SIZE],
+    pub keys: [u8; EXTRACTED_KEY_SIZE],
 }
 
 impl Default for RoundAesni {
@@ -134,10 +145,7 @@ impl RoundAesni {
     }
 
     pub fn reset(&mut self) {
-        let zeros = vec![0u8; EXTRACTED_KEY_SIZE];
-        unsafe {
-            copy_nonoverlapping(&zeros, &mut self.keys.to_vec(), EXTRACTED_KEY_SIZE);
-        }
+        memwipe(&mut self.keys.to_vec());
     }
 
     pub fn aes4(&self, j: &[u8], i: &[u8], l: &[u8], src: &[u8], dst: &mut [u8]) {
@@ -150,102 +158,85 @@ impl RoundAesni {
 }
 
 
-#[derive(Clone, Default)]
-struct Estate {
-    i: [[u8; 16]; 2],
-    j: [[u8; 16]; 3],
-    l: [[u8; 16]; 8],
-    aes: RoundAesni,
-}
+// #[cfg(test)]
+// mod tests {
+//     extern crate rustc_serialize;
 
-impl Estate {
-    pub fn new(key: &[u8]) -> Estate {
-        Estate::default()
-    }
+//     use super::*;
+//     use self::rustc_serialize::hex::ToHex;
 
-    pub fn aez_core_pass1(&self, src: &[u8], dst: &mut [u8], x: &[u8; BLOCK_SIZE], sz: usize) {
-        aez_core_pass_1_amd64_aesni(src, dst, x, &self.i[0], &self.l[0], &self.aes.keys, &DBL_CONSTS, sz)
-    }
+//     #[test]
+//     fn test_reset_amd64_sse2() {
+//         reset_amd64_sse2();
+//     }
 
-    pub fn aez_core_pass2(&self, src: &[u8], dst: &mut [u8], y: &[u8; BLOCK_SIZE], s: &[u8; BLOCK_SIZE], sz: usize) {
-        aez_core_pass_2_amd64_aesni(dst, y, s, &self.j[0], &self.i[1], &self.l[0], &self.aes.keys, &DBL_CONSTS, sz);
-    }
-}
+//     #[test]
+//     fn test_xor_bytes_1x16_amd64_sse2() {
+//         let a = [1u8; BLOCK_SIZE];
+//         let b = [0xffu8; BLOCK_SIZE];
+//         let mut dst = [0u8; BLOCK_SIZE];
+//         xor_bytes_1x16_amd64_sse2(&a, &b, &mut dst);
+//     }
 
-#[cfg(test)]
-mod tests {
-    extern crate rustc_serialize;
+//     #[test]
+//     fn test_xor_bytes_4x16_amd64_sse2() {
+//         let a = [1u8; BLOCK_SIZE];
+//         let b = [0xffu8; BLOCK_SIZE];
+//         let c = [1u8; BLOCK_SIZE];
+//         let d = [0x23u8; BLOCK_SIZE];
+//         let mut dst = [0u8; BLOCK_SIZE];
+//         xor_bytes_4x16_amd64_sse2(&a, &b, &c, &d, &mut dst);
+//     }
 
-    use super::*;
-    use self::rustc_serialize::hex::ToHex;
+//     #[test]
+//     fn test_aez_aes_4_amd64_aesni() {
+//         let j = vec![1u8; BLOCK_SIZE];
+//         let i = vec![0xFFu8; BLOCK_SIZE];
+//         let l = vec![1u8; BLOCK_SIZE];
+//         let k = vec![0x13u8; BLOCK_SIZE];
+//         let src = vec![0xAAu8; BLOCK_SIZE];
+//         let mut dst = vec![0u8; BLOCK_SIZE];
+//         aez_aes_4_amd64_aesni(&j, &i, &l, &k, &src, &mut dst);
+//     }
 
-    #[test]
-    fn test_reset_amd64_sse2() {
-        reset_amd64_sse2();
-    }
+//     #[test]
+//     fn test_aez_aes_10_amd64_aesni() {
+//         let l = vec![1u8; BLOCK_SIZE];
+//         let k = vec![0x13u8; BLOCK_SIZE];
+//         let src = vec![0xAAu8; BLOCK_SIZE];
+//         let mut dst = vec![0u8; BLOCK_SIZE];
+//         aez_aes_10_amd64_aesni(&l, &k, &src, &mut dst);
+//     }
 
-    #[test]
-    fn test_xor_bytes_1x16_amd64_sse2() {
-        let a = [1u8; BLOCK_SIZE];
-        let b = [0xffu8; BLOCK_SIZE];
-        let mut dst = [0u8; BLOCK_SIZE];
-        xor_bytes_1x16_amd64_sse2(&a, &b, &mut dst);
-    }
+//     #[test]
+//     fn test_aez_core_pass_1_amd64_aesni() {
+//         let src = [0xAAu8; BLOCK_SIZE];
+//         let mut dst = [0u8; BLOCK_SIZE];
+//         let x = [1u8; BLOCK_SIZE];
+//         let i = [0x13u8; BLOCK_SIZE];
+//         let l = [1u8; BLOCK_SIZE];
+//         let k = [0x13u8; BLOCK_SIZE];
+//         let consts = [1u8; BLOCK_SIZE];
+//         let sz = 10;
+//         aez_core_pass_1_amd64_aesni(&src, &mut dst, &x, &i, &l, &k, &consts, sz);
+//     }
 
-    #[test]
-    fn test_xor_bytes_4x16_amd64_sse2() {
-        let a = [1u8; BLOCK_SIZE];
-        let b = [0xffu8; BLOCK_SIZE];
-        let c = [1u8; BLOCK_SIZE];
-        let d = [0x23u8; BLOCK_SIZE];
-        let mut dst = [0u8; BLOCK_SIZE];
-        xor_bytes_4x16_amd64_sse2(&a, &b, &c, &d, &mut dst);
-    }
+//     #[test]
+//     fn test_aez_core_pass_2_amd64_aesni() {
+//         let mut dst = [0u8; BLOCK_SIZE];
+//         let y = [1u8; BLOCK_SIZE];
+//         let s = [0x13u8; BLOCK_SIZE];
+//         let j = [5u8; BLOCK_SIZE];
+//         let i = [0x13u8; BLOCK_SIZE];
+//         let l = [1u8; BLOCK_SIZE];
+//         let k = [0x13u8; BLOCK_SIZE];
+//         let consts = [1u8; BLOCK_SIZE];
+//         let sz = 30;
+//         aez_core_pass_2_amd64_aesni(&mut dst, &y, &s, &j, &i, &l, &k, &consts, sz);
+//     }
 
-    #[test]
-    fn test_aez_aes_4_amd64_aesni() {
-        let j = vec![1u8; BLOCK_SIZE];
-        let i = vec![0xFFu8; BLOCK_SIZE];
-        let l = vec![1u8; BLOCK_SIZE];
-        let k = vec![0x13u8; BLOCK_SIZE];
-        let src = vec![0xAAu8; BLOCK_SIZE];
-        let mut dst = vec![0u8; BLOCK_SIZE];
-        aez_aes_4_amd64_aesni(&j, &i, &l, &k, &src, &mut dst);
-    }
-
-    #[test]
-    fn test_aez_aes_10_amd64_aesni() {
-        let l = vec![1u8; BLOCK_SIZE];
-        let k = vec![0x13u8; BLOCK_SIZE];
-        let src = vec![0xAAu8; BLOCK_SIZE];
-        let mut dst = vec![0u8; BLOCK_SIZE];
-        aez_aes_10_amd64_aesni(&l, &k, &src, &mut dst);
-    }
-
-    #[test]
-    fn test_aez_core_pass_1_amd64_aesni() {
-        let src = [0xAAu8; BLOCK_SIZE];
-        let mut dst = [0u8; BLOCK_SIZE];
-        let x = [1u8; BLOCK_SIZE];
-        let i = [0x13u8; BLOCK_SIZE];
-        let l = [1u8; BLOCK_SIZE];
-        let k = [0x13u8; BLOCK_SIZE];
-        let consts = [1u8; BLOCK_SIZE];
-        let sz = 10;
-        aez_core_pass_1_amd64_aesni(&src, &mut dst, &x, &i, &l, &k, &consts, sz);
-    }
-
-    #[test]
-    fn test_aez_core_pass_2_amd64_aesni() {
-        let mut dst = [0u8; BLOCK_SIZE];
-        let y = [1u8; BLOCK_SIZE];
-        let s = [0x13u8; BLOCK_SIZE];
-        let j = [5u8; BLOCK_SIZE];
-        let i = [0x13u8; BLOCK_SIZE];
-        let l = [1u8; BLOCK_SIZE];
-        let k = [0x13u8; BLOCK_SIZE];
-        let consts = [1u8; BLOCK_SIZE];
-        let sz = 30;
-        aez_core_pass_2_amd64_aesni(&mut dst, &y, &s, &j, &i, &l, &k, &consts, sz);
-    }
-}
+//     #[test]
+//     fn test_supports_aesni() {
+//         assert_eq!(supports_aesni(), true);
+//     }
+// }
