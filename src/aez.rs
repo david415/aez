@@ -1,4 +1,4 @@
-// lib.rs - The rust AEZ wrapper implementation.
+// aez.rs - The rust AEZ wrapper implementation.
 // Copyright (C) 2018  David Anthony Stainton.
 //
 // This program is free software: you can redistribute it and/or modify
@@ -14,5 +14,25 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-pub mod aez_amd64;
-pub mod aez;
+use super::aez_amd64::cpuid_amd64;
+
+
+pub fn supports_aesni() -> bool {
+    let aesni_bit = 1 << 25;
+
+    // Check for AES-NI support.
+    // CPUID.(EAX=01H, ECX=0H):ECX.AESNI[bit 25]==1
+    let mut regs = vec![1u32; 4];
+    cpuid_amd64(&mut regs[0]);
+    regs[2] & aesni_bit != 0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_supports_aesni() {
+        assert_eq!(supports_aesni(), true);
+    }
+}
