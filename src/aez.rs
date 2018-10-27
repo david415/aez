@@ -79,6 +79,12 @@ fn mult_block(x: u32, src: &[u8; BLOCK_SIZE], dst: &mut [u8; BLOCK_SIZE]) {
     memwipe(&mut r);
 }
 
+fn one_zero_pad(src: &[u8], sz: usize, dst: &mut [u8; BLOCK_SIZE]) {
+    memwipe(dst);
+    dst.clone_from_slice(&src[..sz]);
+    dst[sz] = 0x80;
+}
+
 #[derive(Clone, Default)]
 struct EState {
     i: [[u8; 16]; 2],
@@ -144,7 +150,7 @@ impl EState {
         aez_core_pass_2_amd64_aesni(dst, y, s, &self.j[0], &self.i[1], &self.l[0], &self.aes.keys, &DBL_CONSTS, sz);
     }
 
-    pub fn aez_hash(&self, nonce: &[u8], ad: &[u8], tau: u32, result: &mut [u8; BLOCK_SIZE]) {
+    pub fn aez_hash(&self, nonce: &[u8], ad: Option<&Vec<Vec<u8>>>, tau: u32, result: &mut [u8; BLOCK_SIZE]) {
         let mut buf = [0u8; BLOCK_SIZE];
         let mut sum = [0u8; BLOCK_SIZE];
         let mut i = [0u8; BLOCK_SIZE];
@@ -156,6 +162,92 @@ impl EState {
         self.aes.aes4(&j, &self.i[1], &self.l[1], &buf, &mut sum);
 
         // Hash nonce, accumulate into sum
+        let mut n_bytes = nonce.len() as u32;
+        i.clone_from_slice(&self.i[1]);
+        let mut n = nonce;
+        let mut x = 0;
+        while n_bytes >= BLOCK_SIZE as u32 {
+            self.aes.aes4(&self.j[2], &i, &self.l[x%8], &n[..BLOCK_SIZE], &mut buf);
+            xor_bytes_1x16(&sum.clone(), &buf, &mut sum);
+            n = &n[BLOCK_SIZE..];
+            if x % 8 == 0 {
+                double_block(&mut i);
+            }
+            n_bytes = n_bytes - BLOCK_SIZE as u32;
+            x = x + 1;
+        }
+        if n_bytes > 0 || nonce.len() == 0 {
+            memwipe(&mut buf);
+            buf.clone_from_slice(&n);
+            buf[n_bytes as usize] = 0x80;
+            self.aes.aes4(&self.j[2], &self.i[0], &self.l[0], &buf.clone(), &mut buf);
+            xor_bytes_1x16(&sum.clone(), &buf, &mut sum);
+        }
+
+        // Hash each vector element, accumulate into sum
+        if ad.is_some() {
+            x = 0;
+            while x < ad.unwrap().len() {
+                let mut p = ad.unwrap()[x].clone();
+                let is_empty = p.len() == 0;
+                let mut bytes = p.len();
+                i.clone_from_slice(&self.i[1]);
+                mult_block(5+x as u32, &self.j[0], &mut j);
+                let mut y = 0;
+                while bytes >= BLOCK_SIZE {
+                    self.aes.aes4(&j, &i, &self.l[y%8], &p[..BLOCK_SIZE], &mut buf); // E(5+k,i)
+                    xor_bytes_1x16(&sum.clone(), &buf, &mut sum);
+                    p = p[BLOCK_SIZE..].to_vec();
+                    if y % 8 == 0 {
+                        double_block(&mut i);
+                    }
+                    y = y+1;
+                    bytes = bytes - BLOCK_SIZE;
+                }
+                if bytes > 0 || is_empty {
+                    memwipe(&mut buf);
+                    buf.clone_from_slice(&p);
+                    buf[bytes] = 0x80;
+                    self.aes.aes4(&j, &self.i[0], &self.l[0], &buf.clone(), &mut buf);
+                    xor_bytes_1x16(&sum.clone(), &buf, &mut sum);
+                }
+                x += 1;
+            }
+        }
+
+        memwipe(&mut i);
+        memwipe(&mut j);
+        result.clone_from_slice(&sum);
+    }
+
+    pub fn aez_prf(&self, delta: &[u8; BLOCK_SIZE], tau: usize, result: &mut [u8]) {
+        let mut buf = [0u8; BLOCK_SIZE];
+        let mut ctr = [0u8; BLOCK_SIZE];
+        let mut t = tau;
+        let mut off = 0;
+        while t >= BLOCK_SIZE {
+            xor_bytes_1x16(&delta, &ctr, &mut buf);
+            &self.aes.aes10(&self.l[3], &buf.clone(), &mut buf); // E(-1,3)
+            result[off..].clone_from_slice(&buf);
+
+            let mut i = 15;
+            loop {
+                ctr[i] += 1;
+                i -= 1;
+                if ctr[i+1] != 0 {
+                    break
+                }
+            }
+
+            t -= BLOCK_SIZE;
+            off += BLOCK_SIZE;
+        }
+        if t > 0 {
+            xor_bytes_1x16(&delta, &ctr, &mut buf);
+            self.aes.aes10(&self.l[3], &buf.clone(), &mut buf); // E(-1,3)
+        }
+
+        memwipe(&mut buf);
     }
 }
 
