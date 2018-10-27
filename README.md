@@ -1,7 +1,8 @@
 
-# aez
+# AEZ
 [![](https://travis-ci.org/david415/aez.png?branch=master)](https://www.travis-ci.org/david415/aez) [![](https://img.shields.io/crates/v/aez.svg)](https://crates.io/crates/aez) [![](https://docs.rs/aez/badge.svg)](https://docs.rs/aez/)
 
+The AEZ wide-block cipher: [AEZ](http://web.cs.ucdavis.edu/~rogaway/aez/)
 
 This rust crate provides a hardware accelerated AEZ wide-block cipher
 library. I use Yawning's assembler source code which implements AEZ
@@ -9,10 +10,13 @@ in AMD64 AES-NI hardware accelerated assembler. Additionally the
 golang components code from Yawning's AEZ implementation are also
 ported here to rust.
 
-# unsafe
-
-Therefore this crate is a mix of safe rust code and unsafe rust code
+This crate is a mix of safe rust code and unsafe rust code
 which wraps some assembler which is most definitely unsafe.
+
+
+# status
+
+This is a work-in-progress and is NOT ready for use.
 
 
 # warning
@@ -22,19 +26,12 @@ therefore should not be considered safe or correct. Use it at your own
 risk!
 
 
-
 # compatibility status
 
 If the AMD64 AES-NI hardware acceleration capability is not present
 it is possible to make the library "fallback" to a pure rust AEZ implementation.
 This is the approach taken in Yawning's golang library however here I
 am lazy and have done no such thing. No AES-NI? Sad panda. Too bad. :(
-
-
-
-# status
-
-This is a work-in-progress and is NOT ready for use.
 
 
 
