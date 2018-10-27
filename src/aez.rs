@@ -86,8 +86,52 @@ struct EState {
 }
 
 impl EState {
-    pub fn new(key: &[u8]) -> EState {
-        EState::default() // XXX
+    pub fn new(k: &[u8]) -> EState {
+        let mut extracted_key = [0u8; EXTRACTED_KEY_SIZE];
+
+        extract(k, &mut extracted_key);
+
+        let mut e = EState::default();
+        e.j[0].clone_from_slice(&extracted_key[..16]);   // 1I
+        mult_block(2, &e.i[0].clone(), &mut e.i[1]);     // 2I
+
+        e.j[0].clone_from_slice(&extracted_key[16..32]); // 1J
+        mult_block(2, &e.j[0].clone(), &mut e.j[1]);     // 2J
+        mult_block(2, &e.j[1].clone(), &mut e.j[2]);     // 4J
+
+	// The upstream `aesni` code only stores L1, L2, and L4, but it has
+	// the benefit of being written in a real language that has vector
+	// intrinsics.
+
+        e.l[1].clone_from_slice(&extracted_key[32..48]);               // L1
+        mult_block(2, &e.l[1].clone(), &mut e.l[2]);                   // L2 = L1*2
+        xor_bytes_1x16(&e.l[2].clone(), &e.l[1].clone(), &mut e.l[3]); // L3 = L2+L1
+        mult_block(2, &e.l[2].clone(), &mut e.l[4]);                   // L4 = L2*2
+        xor_bytes_1x16(&e.l[4].clone(), &e.l[1].clone(), &mut e.l[5]); // L5 = L4+L1
+        mult_block(2, &e.l[3].clone(), &mut e.l[6]);                   // L6 = L3*2
+        xor_bytes_1x16(&e.l[6].clone(), &e.l[1].clone(), &mut e.l[7]); // L7 = L6+L1
+
+        e.aes = RoundAesni::new(extracted_key);
+        memwipe(&mut extracted_key);
+        e
+    }
+
+    pub fn reset(&mut self) {
+        let mut i = 0;
+        while i < self.i.len() {
+            memwipe(&mut self.i[i]);
+            i += 1;
+        }
+        i = 0;
+        while i < self.j.len() {
+            memwipe(&mut self.j[i]);
+            i += 1;
+        }
+        i = 0;
+        while i < self.l.len() {
+            memwipe(&mut self.l[i]);
+            i += 1;
+        }
     }
 
     pub fn aez_core_pass1(&self, src: &[u8], dst: &mut [u8], x: &[u8; BLOCK_SIZE], sz: usize) {
@@ -97,6 +141,8 @@ impl EState {
     pub fn aez_core_pass2(&self, src: &[u8], dst: &mut [u8], y: &[u8; BLOCK_SIZE], s: &[u8; BLOCK_SIZE], sz: usize) {
         aez_core_pass_2_amd64_aesni(dst, y, s, &self.j[0], &self.i[1], &self.l[0], &self.aes.keys, &DBL_CONSTS, sz);
     }
+
+    pub fn aez_hash(nonce: &[u8], ad: &[u8], tau: usize, result: &mut [u8]) {}
 }
 
 
@@ -129,5 +175,12 @@ mod tests {
         let fu = vec![0x3u8; EXTRACTED_KEY_SIZE-5];
         let mut out = [0u8; EXTRACTED_KEY_SIZE];
         extract(&fu, &mut out);
+    }
+
+    #[test]
+    fn test_estate_new() {
+        let k = vec![0x77u8; 333];
+        let mut s = EState::new(&k);
+        println!("key is {}", s.aes.keys.to_hex());
     }
 }
