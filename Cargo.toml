@@ -15,6 +15,7 @@ build = "build.rs"
 [dependencies]
 libc = "0.2"
 blake2b = "0.7.0"
+byteorder = "1.2.6"
 
 [dependencies.subtle]
 version = "1"

@@ -16,9 +16,11 @@
 
 extern crate blake2b;
 extern crate subtle;
+extern crate byteorder;
 
 
 use std::ptr;
+use self::byteorder::{ByteOrder, BigEndian};
 use self::blake2b::blake2b;
 use self::subtle::{Choice, ConstantTimeEq, ConditionallySelectable};
 
@@ -142,7 +144,19 @@ impl EState {
         aez_core_pass_2_amd64_aesni(dst, y, s, &self.j[0], &self.i[1], &self.l[0], &self.aes.keys, &DBL_CONSTS, sz);
     }
 
-    pub fn aez_hash(nonce: &[u8], ad: &[u8], tau: usize, result: &mut [u8]) {}
+    pub fn aez_hash(&self, nonce: &[u8], ad: &[u8], tau: u32, result: &mut [u8; BLOCK_SIZE]) {
+        let mut buf = [0u8; BLOCK_SIZE];
+        let mut sum = [0u8; BLOCK_SIZE];
+        let mut i = [0u8; BLOCK_SIZE];
+        let mut j = [0u8; BLOCK_SIZE];
+
+	// Initialize sum with hash of tau
+        BigEndian::write_u32(&mut buf[12..], tau);
+        xor_bytes_1x16(&self.j[0].clone(), &self.j[1], &mut j);
+        self.aes.aes4(&j, &self.i[1], &self.l[1], &buf, &mut sum);
+
+        // Hash nonce, accumulate into sum
+    }
 }
 
 
@@ -150,7 +164,6 @@ impl EState {
 // additional data, and appends the result to ciphertext, returning the
 // updated slice.  The length of the authentication tag in bytes is specified
 // by tau.  The plaintext and dst slices MUST NOT overlap.
-// func Encrypt(key []byte, nonce []byte, additionalData [][]byte, tau int, plaintext, dst []byte) []byte {
 pub fn encrypt(key: &[u8], nonce: &[u8], additional_data: &[u8], tau: usize, plaintext: &[u8], dst: &[u8]) {
 
 }
