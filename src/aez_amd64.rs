@@ -17,7 +17,6 @@
 extern crate libc;
 
 use self::libc::c_int;
-use super::aez::memwipe;
 
 pub const BLOCK_SIZE: usize = 16;
 pub const EXTRACTED_KEY_SIZE: usize = 3 * 16;
