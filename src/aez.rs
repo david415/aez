@@ -28,7 +28,7 @@ use super::aez_amd64::{EXTRACTED_KEY_SIZE, BLOCK_SIZE, DBL_CONSTS,
                        RoundAesni, xor_bytes_1x16, xor_bytes_4x16,
                        aez_core_pass_1_amd64_aesni,
                        aez_core_pass_2_amd64_aesni};
-
+use super::errors::AezDecryptError;
 
 const ZERO_BLOCK: [u8; BLOCK_SIZE] = [0u8; BLOCK_SIZE];
 
@@ -265,7 +265,7 @@ impl EState {
         memwipe(&mut buf);
     }
 
-    pub fn aez_core(&self, delta: &[u8; BLOCK_SIZE], src: &mut [u8], d: u32, dst: &mut [u8]) {
+    pub fn aez_core(&self, delta: &[u8; BLOCK_SIZE], src: &[u8], d: u32, dst: &mut [u8]) {
         let mut tmp = [0u8; BLOCK_SIZE];
         let mut x = [0u8; BLOCK_SIZE];
         let mut y = [0u8; BLOCK_SIZE];
@@ -288,27 +288,28 @@ impl EState {
         // Finish X calculation
         let mut _src = vec![0u8; src[initial_bytes..].len()];
         _src.clone_from_slice(&src[initial_bytes..]);
-        src.clone_from_slice(&_src);
+        let mut src_c = vec![0u8; src.len()];
+        src_c.clone_from_slice(&_src);
         if frag_bytes >= BLOCK_SIZE {
-            self.aes.aes4(&ZERO_BLOCK, &self.i[1], &self.l[4], &src[..BLOCK_SIZE], &mut tmp);
+            self.aes.aes4(&ZERO_BLOCK, &self.i[1], &self.l[4], &src_c[..BLOCK_SIZE], &mut tmp);
             xor_bytes_1x16(&x.clone(), &tmp, &mut x);
-            one_zero_pad(&src[BLOCK_SIZE..], frag_bytes-BLOCK_SIZE, &mut tmp);
+            one_zero_pad(&src_c[BLOCK_SIZE..], frag_bytes-BLOCK_SIZE, &mut tmp);
             self.aes.aes4(&ZERO_BLOCK, &self.i[1], &self.l[5], &tmp.clone(), &mut tmp);
             xor_bytes_1x16(&x.clone(), &tmp, &mut x);
         } else {
-            one_zero_pad(&src, frag_bytes, &mut tmp);
+            one_zero_pad(&src_c, frag_bytes, &mut tmp);
             &self.aes.aes4(&ZERO_BLOCK, &self.i[1], &self.l[4], &tmp.clone(), &mut tmp);
             xor_bytes_1x16(&x.clone(), &tmp, &mut x);
         }
 
         // Calculate S
         dst.clone_from_slice(&dst_orig[src_orig.len()-32..]);
-        src.clone_from_slice(&src_orig[src_orig.len()-32..]);
-        self.aes.aes4(&ZERO_BLOCK, &self.i[1], &self.l[(1+d as usize)%8], &src[BLOCK_SIZE..2*BLOCK_SIZE], &mut tmp);
+        src_c.clone_from_slice(&src_orig[src_orig.len()-32..]);
+        self.aes.aes4(&ZERO_BLOCK, &self.i[1], &self.l[(1+d as usize)%8], &src_c[BLOCK_SIZE..2*BLOCK_SIZE], &mut tmp);
         let mut out_block = [0u8; BLOCK_SIZE];
         out_block.clone_from_slice(&dst[..BLOCK_SIZE]);
         let mut in_block = [0u8; BLOCK_SIZE];
-        in_block.clone_from_slice(&src[..BLOCK_SIZE]);
+        in_block.clone_from_slice(&src_c[..BLOCK_SIZE]);
         xor_bytes_4x16(&x, &in_block, &delta, &tmp, &mut out_block);
 	// XXX/performance: Early abort if tag is corrupted.
 
@@ -316,23 +317,23 @@ impl EState {
         dst.clone_from_slice(&dst_orig);
         let mut dst_buf = vec![0u8; dst.len()];
         dst_buf.clone_from_slice(&dst);
-        if src.len() >= 64 {
-            self.aez_core_pass2(&src, &mut dst_buf, &y, &s, initial_bytes);
+        if src_c.len() >= 64 {
+            self.aez_core_pass2(&src_c, &mut dst_buf, &y, &s, initial_bytes);
         }
 
         // Finish Y calculation and finish encryption of fragment bytes
         let mut new_dst = vec![0u8; dst[initial_bytes..].len()];
         new_dst.clone_from_slice(&dst[initial_bytes..]);
         dst.clone_from_slice(&new_dst);
-        let mut new_src = vec![0u8; src[initial_bytes..].len()];
-        new_src.clone_from_slice(&src[initial_bytes..]);
-        src.clone_from_slice(&new_src);
+        let mut new_src = vec![0u8; src_c[initial_bytes..].len()];
+        new_src.clone_from_slice(&src_c[initial_bytes..]);
+        src_c.clone_from_slice(&new_src);
 
         if frag_bytes >= BLOCK_SIZE {
             self.aes.aes10(&self.l[4], &s, &mut tmp); // E(-1,4)
             let mut dst_block = [0u8; BLOCK_SIZE];
             let mut src_block = [0u8; BLOCK_SIZE];
-            src_block.clone_from_slice(&src);
+            src_block.clone_from_slice(&src_c);
             xor_bytes_1x16(&src_block, &tmp, &mut dst_block);
             dst[..BLOCK_SIZE].clone_from_slice(&dst_block);
             self.aes.aes4(&ZERO_BLOCK, &self.i[1], &self.l[4], &dst[..BLOCK_SIZE], &mut tmp);
@@ -344,12 +345,12 @@ impl EState {
             dst_block.clone_from_slice(&dst[BLOCK_SIZE..]);
             dst.clone_from_slice(&dst_block);
             let mut src_block = [0u8; BLOCK_SIZE];
-            src_block.clone_from_slice(&src[BLOCK_SIZE..]);
-            src.clone_from_slice(&src_block);
+            src_block.clone_from_slice(&src_c[BLOCK_SIZE..]);
+            src_c.clone_from_slice(&src_block);
             frag_bytes -= BLOCK_SIZE;
 
             self.aes.aes10(&self.l[5], &s, &mut tmp);
-            xor_bytes(&src, &tmp.clone(), &mut tmp[..frag_bytes]);
+            xor_bytes(&src_c, &tmp.clone(), &mut tmp[..frag_bytes]);
             dst.clone_from_slice(&tmp[..frag_bytes]);
             memwipe(&mut tmp[frag_bytes..]);
             tmp[frag_bytes] = 0x80;
@@ -357,7 +358,7 @@ impl EState {
             xor_bytes_1x16(&y.clone(), &tmp, &mut y);
         } else if frag_bytes > 0 {
             self.aes.aes10(&self.l[4], &s, &mut tmp); // E(-1,4)
-            xor_bytes(&src, &tmp.clone(), &mut tmp[..frag_bytes]);
+            xor_bytes(&src_c, &tmp.clone(), &mut tmp[..frag_bytes]);
             dst.clone_from_slice(&tmp[..frag_bytes]);
             memwipe(&mut tmp[frag_bytes..]);
             tmp[frag_bytes] = 0x80;
@@ -503,7 +504,7 @@ impl EState {
         memwipe(&mut tmp);
     }
 
-    fn encipher(&self, delta: &[u8; BLOCK_SIZE], src: &mut [u8], dst: &mut [u8]) {
+    fn encipher(&self, delta: &[u8; BLOCK_SIZE], src: &[u8], dst: &mut [u8]) {
         if src.len() == 0 {
             return
         }
@@ -512,6 +513,18 @@ impl EState {
             self.aez_tiny(delta, src, 0, dst);
         } else {
             self.aez_core(delta, src, 0, dst);
+        }
+    }
+
+    fn decipher(&self, delta: &[u8; BLOCK_SIZE], src: &[u8], dst: &mut [u8]) {
+        if src.len() == 0 {
+            return
+        }
+
+        if src.len() < 32 {
+            self.aez_tiny(delta, src, 1, dst);
+        } else {
+            self.aez_core(delta, src, 1, dst);
         }
     }
 }
@@ -544,10 +557,61 @@ pub fn encrypt(key: &[u8], nonce: &[u8], additional_data: Option<&Vec<Vec<u8>>>,
     } else {
         memwipe(&mut x[plaintext.len()..]);
         x.clone_from_slice(&plaintext);
-        // XXX e.encipher(&delta, &mut x, &mut x);
+        let mut src_x = vec![0u8; x.len()];
+        src_x.clone_from_slice(&x);
+        e.encipher(&delta, &src_x, &mut x);
     }
     dst.to_vec()
 }
+
+// Decrypt decrypts and authenticates the ciphertext, authenticates the
+// additional data, and if successful appends the resulting plaintext to the
+// provided slice and returns the updated slice and true.  The length of the
+// expected authentication tag in bytes is specified by tau.  The ciphertext
+// and dst slices MUST NOT overlap.
+pub fn decrypt(key: &[u8], nonce: &[u8], additional_data: Option<&Vec<Vec<u8>>>, tau: usize, ciphertext: &[u8], dst: &mut [u8]) -> Result<Vec<u8>, AezDecryptError> {
+    if ciphertext.len() < tau {
+        return Err(AezDecryptError::ShortCiphertext);
+    }
+
+    let mut delta = [0u8; BLOCK_SIZE];
+    let mut sum: u8 = 0;
+    let mut x = vec![];
+    let dst_sz = dst.len();
+    let x_sz = ciphertext.len();
+
+    if dst.len() >= dst_sz + x_sz {
+        let mut slice = vec![0u8; dst_sz + x_sz];
+        slice.clone_from_slice(&dst[..dst_sz + x_sz]);
+        dst.clone_from_slice(&slice);
+    } else {
+        x = vec![0u8; dst_sz + x_sz];
+        x.clone_from_slice(&dst);
+        dst.clone_from_slice(&x);
+    }
+    x.clone_from_slice(&dst[dst_sz..]);
+
+    let mut e = EState::new(&key);
+    e.aez_hash(&nonce, additional_data, tau as u32 *8, &mut delta);
+    if ciphertext.len() == tau {
+        e.aez_prf(&delta, tau, &mut x);
+        let mut i = 0;
+        while i < tau {
+            sum |= x[i] ^ ciphertext[i];
+            i += 1;
+        }
+        x = vec![0u8; dst_sz];
+        x.clone_from_slice(&dst);
+        dst.clone_from_slice(&x);
+    } else {
+        e.decipher(&delta, &ciphertext, &mut x);
+    }
+    if sum != 0 {
+        return Err(AezDecryptError::InvalidCiphertext);
+    }
+    Ok(dst.to_vec())
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -564,17 +628,5 @@ mod tests {
         assert_eq!(zeros, fu);
     }
 
-    #[test]
-    fn test_extract() {
-        let fu = vec![0x3u8; EXTRACTED_KEY_SIZE-5];
-        let mut out = [0u8; EXTRACTED_KEY_SIZE];
-        extract(&fu, &mut out);
-    }
 
-    #[test]
-    fn test_estate_new() {
-        let k = vec![0x77u8; 333];
-        let mut s = EState::new(&k);
-        println!("key is {}", s.aes.keys.to_hex());
-    }
 }
