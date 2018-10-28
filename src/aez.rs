@@ -25,13 +25,70 @@ use self::blake2b::blake2b;
 use self::subtle::{Choice, ConstantTimeEq, ConditionallySelectable};
 
 use super::aez_amd64::{EXTRACTED_KEY_SIZE, BLOCK_SIZE, DBL_CONSTS,
-                       RoundAesni, xor_bytes_1x16, xor_bytes_4x16,
+                       xor_bytes_1x16_amd64_sse2,
+                       xor_bytes_4x16_amd64_sse2,
+                       cpuid_amd64, reset_amd64_sse2,
+                       aez_aes_4_amd64_aesni,
+                       aez_aes_10_amd64_aesni,
                        aez_core_pass_1_amd64_aesni,
                        aez_core_pass_2_amd64_aesni};
 use super::errors::AezDecryptError;
 
 const ZERO_BLOCK: [u8; BLOCK_SIZE] = [0u8; BLOCK_SIZE];
 
+
+
+pub fn xor_bytes_1x16(a: &[u8; BLOCK_SIZE], b: &[u8; BLOCK_SIZE], dst: &mut [u8; BLOCK_SIZE]) {
+    xor_bytes_1x16_amd64_sse2(a, b, dst);
+}
+
+pub fn xor_bytes_4x16(a: &[u8; BLOCK_SIZE], b: &[u8; BLOCK_SIZE], c: &[u8; BLOCK_SIZE], d: &[u8; BLOCK_SIZE], dst: &mut [u8; BLOCK_SIZE]) {
+    xor_bytes_4x16_amd64_sse2(a, b, c, d, dst);
+}
+
+pub fn supports_aesni() -> bool {
+    let aesni_bit = 1 << 25;
+
+    // Check for AES-NI support.
+    // CPUID.(EAX=01H, ECX=0H):ECX.AESNI[bit 25]==1
+    let mut regs = vec![1u32; 4];
+    cpuid_amd64(&mut regs[0]);
+    regs[2] & aesni_bit != 0
+}
+
+#[derive(Clone)]
+pub struct RoundAesni {
+    pub keys: [u8; EXTRACTED_KEY_SIZE],
+}
+
+impl Default for RoundAesni {
+    fn default() -> RoundAesni {
+        RoundAesni{
+            keys: [0u8; EXTRACTED_KEY_SIZE],
+        }
+    }
+}
+
+impl RoundAesni {
+    pub fn new(keys: [u8; EXTRACTED_KEY_SIZE]) -> RoundAesni {
+        RoundAesni {
+            keys: keys,
+        }
+    }
+
+    pub fn reset(&mut self) {
+        memwipe(&mut self.keys.to_vec());
+        reset_amd64_sse2();
+    }
+
+    pub fn aes4(&self, j: &[u8], i: &[u8], l: &[u8], src: &[u8], dst: &mut [u8]) {
+        aez_aes_4_amd64_aesni(j, i, l, &self.keys, src, dst);
+    }
+
+    pub fn aes10(&self, l: &[u8], src: &[u8], dst: &mut [u8]) {
+        aez_aes_10_amd64_aesni(l, &self.keys, src, dst);
+    }
+}
 
 pub fn memwipe(val: &mut [u8]) {
     let zeros = vec![0u8; val.len()];
@@ -174,7 +231,7 @@ impl EState {
 	// Initialize sum with hash of tau
         BigEndian::write_u32(&mut buf[12..], tau);
         xor_bytes_1x16(&self.j[0].clone(), &self.j[1], &mut j);
-        self.aes.aes4(&j, &self.i[1], &self.l[1], &buf, &mut sum);
+        //self.aes.aes4(&j, &self.i[1], &self.l[1], &buf, &mut sum);
 
         // Hash nonce, accumulate into sum
         let mut n_bytes = nonce.len() as u32;
@@ -182,8 +239,8 @@ impl EState {
         let mut n = nonce;
         let mut x = 0;
         while n_bytes >= BLOCK_SIZE as u32 {
-            self.aes.aes4(&self.j[2], &i, &self.l[x%8], &n[..BLOCK_SIZE], &mut buf);
-            xor_bytes_1x16(&sum.clone(), &buf, &mut sum);
+            //self.aes.aes4(&self.j[2], &i, &self.l[x%8], &n[..BLOCK_SIZE], &mut buf);
+            //xor_bytes_1x16(&sum.clone(), &buf, &mut sum);
             n = &n[BLOCK_SIZE..];
             if x % 8 == 0 {
                 double_block(&mut i);
@@ -192,11 +249,12 @@ impl EState {
             x = x + 1;
         }
         if n_bytes > 0 || nonce.len() == 0 {
-            memwipe(&mut buf);
+            //memwipe(&mut buf);
+            buf = [0u8; BLOCK_SIZE];
             buf.clone_from_slice(&n);
             buf[n_bytes as usize] = 0x80;
-            self.aes.aes4(&self.j[2], &self.i[0], &self.l[0], &buf.clone(), &mut buf);
-            xor_bytes_1x16(&sum.clone(), &buf, &mut sum);
+            //self.aes.aes4(&self.j[2], &self.i[0], &self.l[0], &buf.clone(), &mut buf);
+            //xor_bytes_1x16(&sum.clone(), &buf, &mut sum);
         }
 
         // Hash each vector element, accumulate into sum
@@ -210,8 +268,8 @@ impl EState {
                 mult_block(5+x as u32, &self.j[0], &mut j);
                 let mut y = 0;
                 while bytes >= BLOCK_SIZE {
-                    self.aes.aes4(&j, &i, &self.l[y%8], &p[..BLOCK_SIZE], &mut buf); // E(5+k,i)
-                    xor_bytes_1x16(&sum.clone(), &buf, &mut sum);
+                    //self.aes.aes4(&j, &i, &self.l[y%8], &p[..BLOCK_SIZE], &mut buf); // E(5+k,i)
+                    //xor_bytes_1x16(&sum.clone(), &buf, &mut sum);
                     p = p[BLOCK_SIZE..].to_vec();
                     if y % 8 == 0 {
                         double_block(&mut i);
@@ -220,18 +278,18 @@ impl EState {
                     bytes = bytes - BLOCK_SIZE;
                 }
                 if bytes > 0 || is_empty {
-                    memwipe(&mut buf);
+                    //memwipe(&mut buf);
                     buf.clone_from_slice(&p);
                     buf[bytes] = 0x80;
-                    self.aes.aes4(&j, &self.i[0], &self.l[0], &buf.clone(), &mut buf);
-                    xor_bytes_1x16(&sum.clone(), &buf, &mut sum);
+                    //self.aes.aes4(&j, &self.i[0], &self.l[0], &buf.clone(), &mut buf);
+                    //xor_bytes_1x16(&sum.clone(), &buf, &mut sum);
                 }
                 x += 1;
             }
         }
 
-        memwipe(&mut i);
-        memwipe(&mut j);
+        //memwipe(&mut i);
+        //memwipe(&mut j);
         result.clone_from_slice(&sum);
     }
 
@@ -544,10 +602,11 @@ pub fn encrypt(key: &[u8], nonce: &[u8], additional_data: Option<&Vec<Vec<u8>>>,
         slice.clone_from_slice(&dst[..dst_sz + x_sz]);
         dst.clone_from_slice(&slice);
     } else {
-        x = vec![0u8; dst_sz + x_sz];
+        x = vec![0u8; dst.len()];
         x.clone_from_slice(&dst);
         dst.clone_from_slice(&x);
     }
+    x = vec![0u8; dst[dst_sz..].len()];
     x.clone_from_slice(&dst[dst_sz..]);
 
     let mut e = EState::new(&key);
@@ -556,11 +615,13 @@ pub fn encrypt(key: &[u8], nonce: &[u8], additional_data: Option<&Vec<Vec<u8>>>,
         e.aez_prf(&delta, tau, &mut x);
     } else {
         memwipe(&mut x[plaintext.len()..]);
+        x = vec![0u8; plaintext.len()];
         x.clone_from_slice(&plaintext);
         let mut src_x = vec![0u8; x.len()];
         src_x.clone_from_slice(&x);
         e.encipher(&delta, &src_x, &mut x);
     }
+    e.reset();
     dst.to_vec()
 }
 
@@ -609,6 +670,7 @@ pub fn decrypt(key: &[u8], nonce: &[u8], additional_data: Option<&Vec<Vec<u8>>>,
     if sum != 0 {
         return Err(AezDecryptError::InvalidCiphertext);
     }
+    e.reset();
     Ok(dst.to_vec())
 }
 
@@ -616,11 +678,18 @@ pub fn decrypt(key: &[u8], nonce: &[u8], additional_data: Option<&Vec<Vec<u8>>>,
 #[cfg(test)]
 mod tests {
     extern crate rustc_serialize;
+    extern crate rand;
 
     use super::*;
     use self::rustc_serialize::hex::ToHex;
+    use self::rand::Rng;
+    use self::rand::os::OsRng;
 
-    #[test]
+    fn os_rng() -> OsRng {
+        OsRng::new().expect("failure to create an OS RNG")
+    }
+
+    //#[test]
     fn test_memwipe() {
         let mut fu = vec![0x3u8; 20];
         let zeros = vec![0u8; 20];
@@ -628,5 +697,69 @@ mod tests {
         assert_eq!(zeros, fu);
     }
 
+    //#[test]
+    fn test_encrypt_decrypt() {
+        let mut rng = os_rng();
+        let mut key = [0u8; 384];
+        rng.fill_bytes(&mut key);
+        let mut nonce = [0u8; 32];
+        rng.fill_bytes(&mut nonce);
+        let tau = 16; // XXX
+        const TEST_PLAINTEXT: &'static [u8] = b"Hello there world, I'm just a test string";
+        let plaintext: Vec<u8> = TEST_PLAINTEXT.to_owned();
+        let mut dst = vec![0u8; plaintext.len()];
+        let _dst = encrypt(&key, &nonce, None, tau, &plaintext, &mut dst);
+    }
 
+    //#[test]
+    fn test_aez_hash() {
+        let mut rng = os_rng();
+        let mut key = [0u8; 384];
+        rng.fill_bytes(&mut key);
+        let mut nonce = [0u8; 32];
+        rng.fill_bytes(&mut nonce);
+        let mut e = EState::new(&key);
+        let tau = 16; // XXX
+        let mut delta = [0u8; BLOCK_SIZE];
+        e.aez_hash(&nonce, None, tau as u32 *8, &mut delta);
+    }
+
+    #[test]
+    fn test_round_aesni_aes4_wtf() {
+        //let j = vec![1u8; BLOCK_SIZE];
+        let mut j = [0u8; BLOCK_SIZE];
+        let i = vec![0xFFu8; BLOCK_SIZE];
+        let l = vec![1u8; BLOCK_SIZE];
+        let what_the_fuck = 0;
+        //let apple = 1;
+        //let i: [[u8; 16]; 2] = [[0u8; 16]; 2];
+        //let l: [[u8; 16]; 8] = [[0u8; 16]; 8];
+        let src = vec![0xAAu8; BLOCK_SIZE];
+        let mut dst = vec![0u8; BLOCK_SIZE];
+        let mut rng = os_rng();
+        let mut key = [0u8; EXTRACTED_KEY_SIZE];
+        rng.fill_bytes(&mut key);
+
+        let mut round_aesni = RoundAesni::new(key);
+        round_aesni.aes4(&j, &i, &l, &src, &mut dst);
+        //round_aesni.aes4(&j, &i[1], &l[1], &src, &mut dst);
+        round_aesni.reset();
+    }
+    
+    //#[test]
+    fn test_round_aesni_aes4() {
+        let mut rng = os_rng();
+        let mut key = [0u8; EXTRACTED_KEY_SIZE];
+        rng.fill_bytes(&mut key);
+        let mut round_aesni = RoundAesni::new(key);
+        let mut buf = [0u8; BLOCK_SIZE];
+        let mut sum = [0u8; BLOCK_SIZE];
+        let mut block_j = [0u8; BLOCK_SIZE];
+        let i: [[u8; 16]; 2] = [[0u8; 16]; 2];
+        let l: [[u8; 16]; 8] = [[0u8; 16]; 8];
+        let tau = 16;
+        BigEndian::write_u32(&mut buf[12..], tau);
+        //round_aesni.aes4(&block_j, &i[1], &l[1], &buf, &mut sum);        
+        round_aesni.reset();
+    }
 }

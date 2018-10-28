@@ -69,7 +69,12 @@ pub fn xor_bytes_4x16_amd64_sse2(a: &[u8; BLOCK_SIZE], b: &[u8; BLOCK_SIZE], c: 
 
 pub fn aez_aes_4_amd64_aesni(j: &[u8], i: &[u8], l: &[u8], k: &[u8], src: &[u8], dst: &mut [u8]) {
     unsafe {
-        aezAES4AMD64AESNI(&j[0] as *const u8, &i[0] as *const u8, &l[0] as *const u8, &k[0] as *const u8, &src[0] as *const u8, &mut dst[0] as *mut u8);
+        aezAES4AMD64AESNI(&j[0] as *const u8,
+                          &i[0] as *const u8,
+                          &l[0] as *const u8,
+                          &k[0] as *const u8,
+                          &src[0] as *const u8,
+                          &mut dst[0] as *mut u8);
     }
 }
 
@@ -106,56 +111,6 @@ pub fn aez_core_pass_2_amd64_aesni(dst: &mut [u8], y: &[u8], s: &[u8], j: &[u8],
     }
 }
 
-pub fn xor_bytes_1x16(a: &[u8; BLOCK_SIZE], b: &[u8; BLOCK_SIZE], dst: &mut [u8; BLOCK_SIZE]) {
-    xor_bytes_1x16_amd64_sse2(a, b, dst);
-}
-
-pub fn xor_bytes_4x16(a: &[u8; BLOCK_SIZE], b: &[u8; BLOCK_SIZE], c: &[u8; BLOCK_SIZE], d: &[u8; BLOCK_SIZE], dst: &mut [u8; BLOCK_SIZE]) {
-    xor_bytes_4x16_amd64_sse2(a, b, c, d, dst);
-}
-
-pub fn supports_aesni() -> bool {
-    let aesni_bit = 1 << 25;
-
-    // Check for AES-NI support.
-    // CPUID.(EAX=01H, ECX=0H):ECX.AESNI[bit 25]==1
-    let mut regs = vec![1u32; 4];
-    cpuid_amd64(&mut regs[0]);
-    regs[2] & aesni_bit != 0
-}
-
-#[derive(Clone)]
-pub struct RoundAesni {
-    pub keys: [u8; EXTRACTED_KEY_SIZE],
-}
-
-impl Default for RoundAesni {
-    fn default() -> RoundAesni {
-        RoundAesni{
-            keys: [0u8; EXTRACTED_KEY_SIZE],
-        }
-    }
-}
-
-impl RoundAesni {
-    pub fn new(keys: [u8; EXTRACTED_KEY_SIZE]) -> RoundAesni {
-        RoundAesni {
-            keys: keys,
-        }
-    }
-
-    pub fn reset(&mut self) {
-        memwipe(&mut self.keys.to_vec());
-    }
-
-    pub fn aes4(&self, j: &[u8], i: &[u8], l: &[u8], src: &[u8], dst: &mut [u8]) {
-        aez_aes_4_amd64_aesni(j, i, l, &self.keys, src, dst);
-    }
-
-    pub fn aes10(&self, l: &[u8], src: &[u8], dst: &mut [u8]) {
-        aez_aes_10_amd64_aesni(l, &self.keys, src, dst);
-    }
-}
 
 
 // #[cfg(test)]
@@ -188,16 +143,16 @@ impl RoundAesni {
 //         xor_bytes_4x16_amd64_sse2(&a, &b, &c, &d, &mut dst);
 //     }
 
-//     #[test]
-//     fn test_aez_aes_4_amd64_aesni() {
-//         let j = vec![1u8; BLOCK_SIZE];
-//         let i = vec![0xFFu8; BLOCK_SIZE];
-//         let l = vec![1u8; BLOCK_SIZE];
-//         let k = vec![0x13u8; BLOCK_SIZE];
-//         let src = vec![0xAAu8; BLOCK_SIZE];
-//         let mut dst = vec![0u8; BLOCK_SIZE];
-//         aez_aes_4_amd64_aesni(&j, &i, &l, &k, &src, &mut dst);
-//     }
+    // #[test]
+    // fn test_aez_aes_4_amd64_aesni() {
+    //     let j = vec![1u8; BLOCK_SIZE];
+    //     let i = vec![0xFFu8; BLOCK_SIZE];
+    //     let l = vec![1u8; BLOCK_SIZE];
+    //     let k = vec![0x13u8; BLOCK_SIZE];
+    //     let src = vec![0xAAu8; BLOCK_SIZE];
+    //     let mut dst = vec![0u8; BLOCK_SIZE];
+    //     aez_aes_4_amd64_aesni(&j, &i, &l, &k, &src, &mut dst);
+    // }
 
 //     #[test]
 //     fn test_aez_aes_10_amd64_aesni() {
