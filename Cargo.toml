@@ -16,6 +16,9 @@ build = "build.rs"
 libc = "0.2"
 blake2b = "0.7.0"
 byteorder = "1.2.6"
+serde = "1.0.80"
+serde_json = "1.0.32"
+serde_derive = "1.0.80"
 
 [dependencies.subtle]
 version = "1"
