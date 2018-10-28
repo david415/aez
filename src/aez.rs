@@ -25,7 +25,7 @@ use self::blake2b::blake2b;
 use self::subtle::{Choice, ConstantTimeEq, ConditionallySelectable};
 
 use super::aez_amd64::{EXTRACTED_KEY_SIZE, BLOCK_SIZE, DBL_CONSTS,
-                       RoundAesni, xor_bytes_1x16,
+                       RoundAesni, xor_bytes_1x16, xor_bytes_4x16,
                        aez_core_pass_1_amd64_aesni,
                        aez_core_pass_2_amd64_aesni};
 
@@ -33,6 +33,17 @@ pub fn memwipe(val: &mut [u8]) {
     let zeros = vec![0u8; val.len()];
     unsafe {
         ptr::copy_nonoverlapping(&zeros[0] as *const u8, &mut val[0] as *mut u8, val.len());
+    }
+}
+
+fn xor_bytes(a: &[u8], b: &[u8], dst: &mut [u8]) {
+    if a.len() < dst.len() || b.len() < dst.len() {
+        panic!("aez: xor_bytes: len");
+    }
+    let mut i = 0;
+    while i < dst.len() {
+        dst[i] = a[i] ^ b[i];
+        i += 1;
     }
 }
 
@@ -248,6 +259,133 @@ impl EState {
         }
 
         memwipe(&mut buf);
+    }
+
+    pub fn aez_core(&self, delta: &[u8; BLOCK_SIZE], src: &mut [u8], d: u32, dst: &mut [u8]) {
+        let zero = [0u8; BLOCK_SIZE];
+        let mut tmp = [0u8; BLOCK_SIZE];
+        let mut x = [0u8; BLOCK_SIZE];
+        let mut y = [0u8; BLOCK_SIZE];
+        let mut s = [0u8; BLOCK_SIZE];
+        let dst_len = dst.len();
+        let mut dst_orig = vec![0u8; dst_len];
+        dst_orig.clone_from_slice(&dst);
+        let mut src_orig = vec![0u8; src.len()];
+        src_orig.clone_from_slice(&src);
+
+        let mut frag_bytes = src.len() % 32;
+        let initial_bytes = src.len() - frag_bytes - 32;
+
+        // Compute X and store intermediate results
+	// Pass 1 over in[0:-32], store intermediate values in out[0:-32]
+        if src.len() >= 64 {
+            self.aez_core_pass1(src, dst, &x, initial_bytes);
+        }
+
+        // Finish X calculation
+        let mut _src = vec![0u8; src[initial_bytes..].len()];
+        _src.clone_from_slice(&src[initial_bytes..]);
+        src.clone_from_slice(&_src);
+        if frag_bytes >= BLOCK_SIZE {
+            self.aes.aes4(&zero, &self.i[1], &self.l[4], &src[..BLOCK_SIZE], &mut tmp);
+            xor_bytes_1x16(&x.clone(), &tmp, &mut x);
+            one_zero_pad(&src[BLOCK_SIZE..], frag_bytes-BLOCK_SIZE, &mut tmp);
+            self.aes.aes4(&zero, &self.i[1], &self.l[5], &tmp.clone(), &mut tmp);
+            xor_bytes_1x16(&x.clone(), &tmp, &mut x);
+        } else {
+            one_zero_pad(&src, frag_bytes, &mut tmp);
+            &self.aes.aes4(&zero, &self.i[1], &self.l[4], &tmp.clone(), &mut tmp);
+            xor_bytes_1x16(&x.clone(), &tmp, &mut x);
+        }
+
+        // Calculate S
+        dst.clone_from_slice(&dst_orig[src_orig.len()-32..]);
+        src.clone_from_slice(&src_orig[src_orig.len()-32..]);
+        self.aes.aes4(&zero, &self.i[1], &self.l[(1+d as usize)%8], &src[BLOCK_SIZE..2*BLOCK_SIZE], &mut tmp);
+        let mut out_block = [0u8; BLOCK_SIZE];
+        out_block.clone_from_slice(&dst[..BLOCK_SIZE]);
+        let mut in_block = [0u8; BLOCK_SIZE];
+        in_block.clone_from_slice(&src[..BLOCK_SIZE]);
+        xor_bytes_4x16(&x, &in_block, &delta, &tmp, &mut out_block);
+	// XXX/performance: Early abort if tag is corrupted.
+
+	// Pass 2 over intermediate values in out[32..]. Final values written
+        dst.clone_from_slice(&dst_orig);
+        let mut dst_buf = vec![0u8; dst.len()];
+        dst_buf.clone_from_slice(&dst);
+        if src.len() >= 64 {
+            self.aez_core_pass2(&src, &mut dst_buf, &y, &s, initial_bytes);
+        }
+
+        // Finish Y calculation and finish encryption of fragment bytes
+        let mut new_dst = vec![0u8; dst[initial_bytes..].len()];
+        new_dst.clone_from_slice(&dst[initial_bytes..]);
+        dst.clone_from_slice(&new_dst);
+        let mut new_src = vec![0u8; src[initial_bytes..].len()];
+        new_src.clone_from_slice(&src[initial_bytes..]);
+        src.clone_from_slice(&new_src);
+
+        if frag_bytes >= BLOCK_SIZE {
+            self.aes.aes10(&self.l[4], &s, &mut tmp); // E(-1,4)
+            let mut dst_block = [0u8; BLOCK_SIZE];
+            let mut src_block = [0u8; BLOCK_SIZE];
+            src_block.clone_from_slice(&src);
+            xor_bytes_1x16(&src_block, &tmp, &mut dst_block);
+            dst[..BLOCK_SIZE].clone_from_slice(&dst_block);
+            self.aes.aes4(&zero, &self.i[1], &self.l[4], &dst[..BLOCK_SIZE], &mut tmp);
+            let mut src_y = [0u8; BLOCK_SIZE];
+            src_y.clone_from_slice(&y);
+            xor_bytes_1x16(&src_y, &tmp, &mut y);
+
+            let mut dst_block = [0u8; BLOCK_SIZE];
+            dst_block.clone_from_slice(&dst[BLOCK_SIZE..]);
+            dst.clone_from_slice(&dst_block);
+            let mut src_block = [0u8; BLOCK_SIZE];
+            src_block.clone_from_slice(&src[BLOCK_SIZE..]);
+            src.clone_from_slice(&src_block);
+            frag_bytes -= BLOCK_SIZE;
+
+            self.aes.aes10(&self.l[5], &s, &mut tmp);
+            xor_bytes(&src, &tmp.clone(), &mut tmp[..frag_bytes]);
+            dst.clone_from_slice(&tmp[..frag_bytes]);
+            memwipe(&mut tmp[frag_bytes..]);
+            tmp[frag_bytes] = 0x80;
+            self.aes.aes4(&zero, &self.i[1], &self.l[5], &tmp.clone(), &mut tmp);
+            xor_bytes_1x16(&y.clone(), &tmp, &mut y);
+        } else if frag_bytes > 0 {
+            self.aes.aes10(&self.l[4], &s, &mut tmp); // E(-1,4)
+            xor_bytes(&src, &tmp.clone(), &mut tmp[..frag_bytes]);
+            dst.clone_from_slice(&tmp[..frag_bytes]);
+            memwipe(&mut tmp[frag_bytes..]);
+            tmp[frag_bytes] = 0x80;
+            self.aes.aes4(&zero, &self.i[1], &self.l[4], &tmp.clone(), &mut tmp); // E(0,4)
+            xor_bytes_1x16(&y.clone(), &tmp, &mut y);
+        }
+
+        // Finish encryption of last two blocks
+        dst.clone_from_slice(&dst_orig[src_orig.len()-32..]);
+        self.aes.aes10(&self.l[(2-d as usize)%8], &dst[BLOCK_SIZE..], &mut tmp);
+        let mut dst_block = [0u8; BLOCK_SIZE];
+        let mut ma_dst = [0u8; BLOCK_SIZE];
+        ma_dst.clone_from_slice(&dst);
+        xor_bytes_1x16(&ma_dst, &tmp, &mut dst_block);
+        dst[..BLOCK_SIZE].clone_from_slice(&dst_block);
+        self.aes.aes4(&zero, &self.i[1], &self.l[(2-d as usize) % 8], &dst[..BLOCK_SIZE], &mut tmp); // E(0,2-d)
+        let mut dst_block = [0u8; BLOCK_SIZE];
+        xor_bytes_4x16(&tmp, &dst_block.clone(), &delta, &y, &mut dst_block);
+        dst[BLOCK_SIZE..].clone_from_slice(&dst_block);
+        tmp.clone_from_slice(&dst[..BLOCK_SIZE]);
+        dst_block.clone_from_slice(&dst[BLOCK_SIZE..]);
+        dst[..BLOCK_SIZE].clone_from_slice(&dst_block);
+        dst[BLOCK_SIZE..].clone_from_slice(&tmp);
+
+        memwipe(&mut x);
+        memwipe(&mut y);
+        memwipe(&mut s);
+    }
+
+    pub fn aez_tiny() {
+
     }
 }
 
