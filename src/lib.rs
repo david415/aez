@@ -15,7 +15,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 pub mod aez_binding;
-
+pub mod aez;
 
 #[macro_use]
 extern crate serde_derive;

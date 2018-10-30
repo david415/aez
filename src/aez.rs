@@ -1,4 +1,4 @@
-// aez_binding.rs - The rust bindings for a hardware optimized AEZ implemented in C.
+// aez.rs - The rust bindings wrapper.
 // Copyright (C) 2018  David Anthony Stainton.
 //
 // This program is free software: you can redistribute it and/or modify
@@ -14,29 +14,41 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-extern "C" {
-    pub fn aez_setup_encrypt(key: *const u8, nonce: *const u8,
-                             ad: *const u8, adlen: usize, alen: usize,
-                             src: *const u8, srclen: usize, dst: *mut u8);
+use std::ptr;
 
-    pub fn aez_setup_decrypt(key: *const u8, nonce: *const u8,
-                             ad: *const u8, adlen: usize, alen: usize,
-                             src: *const u8, srclen: usize, dst: *mut u8);
+use super::aez_binding::{aez_setup_encrypt, aez_setup_decrypt};
+
+
+pub fn encrypt(key: &[u8; 48], nonce: &[u8; 16], mesg: &Vec<u8>) -> Vec<u8> {
+    let mut ciphertext = vec![0u8; mesg.len()];
+    unsafe {
+        aez_setup_encrypt(key as *const u8, nonce as *const u8, ptr::null(), 0, 0, mesg.as_ptr(), mesg.len(), ciphertext.as_mut_ptr());
+    }
+    ciphertext
 }
+
+
+pub fn decrypt(key: &[u8; 48], nonce: &[u8; 16], mesg: &Vec<u8>) -> Vec<u8> {
+    let mut plaintext = vec![0u8; mesg.len()];
+    unsafe {
+        aez_setup_decrypt(key as *const u8, nonce as *const u8, ptr::null(), 0, 0, mesg.as_ptr(), mesg.len(), plaintext.as_mut_ptr());
+    }
+    plaintext
+}
+
 
 #[cfg(test)]
 mod tests {
     extern crate rustc_serialize;
 
     use super::*;
-    use std::ptr;
     use self::rustc_serialize::hex::{FromHex};
 
     #[test]
-    fn test_simple_bindings_usage() {
+    fn test_encrypt_decrypt() {
         let key_str = "f499be9a1dd859c1471156baed30ba7b35f19abf8e94a7868410a79ce61bdb5b995bd0e69592ff677875e5d693388e3d";
         let key = key_str.from_hex().unwrap();
-        let nonce_str = "facef44b512767cd889f2abea615";
+        let nonce_str = "facef44b512767cd889f2abea615beef";
         let nonce = nonce_str.from_hex().unwrap();
         let s = String::from("We must defend our own privacy if we expect to have any. \
                               We must come together and create systems which allow anonymous transactions to take place. \
@@ -47,16 +59,14 @@ mod tests {
         let string_bytes = s.into_bytes();
         let mut payload = vec![0u8; 500];
         payload[0.._s_len].copy_from_slice(&string_bytes);
-        let mut ciphertext = vec![0u8; payload.len()];
-        let mut plaintext = vec![0u8; payload.len()];
-        unsafe {
-            aez_setup_encrypt(key.as_ptr(), nonce.as_ptr(),
-                              ptr::null(), 0, 0,
-                              payload.as_ptr(), payload.len(), ciphertext.as_mut_ptr());
-            aez_setup_decrypt(key.as_ptr(), nonce.as_ptr(),
-                              ptr::null(), 0, 0,
-                              ciphertext.as_ptr(), ciphertext.len(), plaintext.as_mut_ptr());
-            assert_eq!(payload.as_slice(), plaintext.as_slice());
-        }
+        let mut key_array = [0u8; 48];
+        key_array.clone_from_slice(&key);
+        let mut nonce_array = [0u8; 16];
+        nonce_array.clone_from_slice(&nonce);
+        let ciphertext = encrypt(&key_array, &nonce_array, &payload);
+        let plaintext = decrypt(&key_array, &nonce_array, &ciphertext);
+        assert_eq!(payload.as_slice(), plaintext.as_slice());
+        //let out_str = String::from_utf8_lossy(&plaintext);
+        //println!("plaintext! {}", out_str)
     }
 }
