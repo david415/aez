@@ -909,7 +909,7 @@ void aez_setup_encrypt(char *key, char *nonce,
 {
     aez_ctx_t ctx;
     aez_setup(key, (unsigned)48, &ctx);
-    aez_encrypt(&ctx, nonce, (unsigned)16,
+    aez_encrypt(&ctx, nonce, (unsigned)12,
                 ad, adlen, alen,
                 src, srclen, dst);
 }
@@ -920,7 +920,7 @@ void aez_setup_decrypt(char *key, char *nonce,
 {
     aez_ctx_t ctx;
     aez_setup(key, (unsigned)48, &ctx);
-    aez_decrypt(&ctx, nonce, (unsigned)16,
+    aez_decrypt(&ctx, nonce, (unsigned)12,
                 ad, adlen, alen,
                 src, srclen, dst);
 }

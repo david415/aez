@@ -41,28 +41,33 @@ mod tests {
     #[test]
     fn test_bindings1() {
         let mut rng = os_rng();
-        let mut key = vec![0u8; 48];
+        let mut key = [0u8; 48];
         rng.fill_bytes(&mut key);
-        let s = String::from("We must defend our own privacy");
+        let nonce = [0u8; 12];
+        //rng.fill_bytes(&mut nonce);
+        let s = String::from("We must defend our own privacy if we expect to have any. \
+                              We must come together and create systems which allow anonymous transactions to take place. \
+                              People have been defending their own privacy for centuries with whispers, darkness, envelopes, \
+                              closed doors, secret handshakes, and couriers. The technologies of the past did not allow for strong \
+                              privacy, but electronic technologies do.");
+
         let _s_len = s.len();
-        let payload = s.into_bytes();
-        let out_str1 = String::from_utf8_lossy(&payload);
-        println!("plaintext! {}", out_str1);
-        let mut nonce = vec![0u8; 16];
-        rng.fill_bytes(&mut nonce);
+        let string_bytes = s.into_bytes();
+        let mut payload = vec![0u8; 500];
+        payload[0.._s_len].copy_from_slice(&string_bytes);
         let ad = vec![0u8; 16];
         let mut ciphertext = vec![0u8; payload.len()];
         let mut plaintext = vec![0u8; payload.len()];
         unsafe {
-            aez_setup_encrypt(key.as_ptr(), nonce.as_ptr(),
-                              ad.as_ptr(), 16, 1,
+            aez_setup_encrypt(&key as *const u8, &nonce as *const u8,
+                              ad.as_ptr(), 0, 0,
                               payload.as_ptr(), payload.len(), ciphertext.as_mut_ptr());
-            println!("ciphertext! {}", ciphertext.to_hex());
-            aez_setup_encrypt(key.as_ptr(), nonce.as_ptr(),
-                              ad.as_ptr(), 16, 1,
+            //println!("ciphertext! {}", ciphertext.to_hex());
+            aez_setup_encrypt(&key as *const u8, &nonce as *const u8,
+                              ad.as_ptr(), 0, 0,
                               ciphertext.as_ptr(), ciphertext.len(), plaintext.as_mut_ptr());
             let out_str = String::from_utf8_lossy(&plaintext);
-            println!("plaintext! {}", out_str);
+            //println!("plaintext! {}", out_str);
             assert_eq!(payload.as_slice(), plaintext.as_slice());
         }
     }
