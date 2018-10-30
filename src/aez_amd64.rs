@@ -54,7 +54,7 @@ pub fn cpuid_amd64(cpu_params: &u32) {
     }
 }
 
-pub fn xor_bytes_1x16_amd64_sse2(a: &[u8; BLOCK_SIZE], b: &[u8; BLOCK_SIZE], dst: &mut [u8; BLOCK_SIZE]) {
+pub fn xor_bytes_1x16_amd64_sse2(a: Vec<u8>, b: Vec<u8>, dst: &mut Vec<u8>) {
     unsafe {
         xorBytes1x16AMD64SSE2(&a[0] as *const u8, &b[0] as *const u8, &mut dst[0] as *mut u8);
     }
