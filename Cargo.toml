@@ -1,0 +1,29 @@
+[package]
+name = "aez"
+version = "0.0.0"
+authors = ["David Stainton <dawuud@riseup.net>"]
+description = "Rust wrapper for AEZ wide block cipher written in amd64 assembler."
+homepage = "https://github.com/david415/aez"
+repository = "https://github.com/david415/aez"
+documentation = "https://docs.rs/aez/"
+readme = "README.md"
+keywords = ["cryptography", "aez"]
+license = "AGPL-3.0-only"
+links = "aez"
+build = "build.rs"
+
+[dependencies]
+libc = "0.2"
+blake2b = "0.7.0"
+byteorder = "1.2.6"
+serde = "1.0.80"
+serde_json = "1.0.32"
+serde_derive = "1.0.80"
+
+[dependencies.subtle]
+version = "1"
+features = ["nightly"]
+
+[dev-dependencies]
+rand = "^0.4.2"
+rustc-serialize = "0.3"
