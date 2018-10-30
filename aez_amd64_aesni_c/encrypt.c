@@ -35,7 +35,7 @@
  // For more information, please refer to <http://unlicense.org/>
  */
 
-#include "crypto_aead.h"
+//#include "crypto_aead.h"
 #include <stdint.h>
 #include <stddef.h>
 
@@ -903,42 +903,57 @@ static int blake2b(void *out, size_t outlen,
     return 0;
 }
 
-/* ------------------------------------------------------------------------- */
-/* aez mapping for CAESAR competition                                        */
-
-int crypto_aead_encrypt(
-    unsigned char *c,unsigned long long *clen,
-    const unsigned char *m,unsigned long long mlen,
-    const unsigned char *ad,unsigned long long adlen,
-    const unsigned char *nsec,
-    const unsigned char *npub,
-    const unsigned char *k
-)
+void aez_setup_encrypt(char *key, char *nonce,
+                       char *ad, unsigned adlen, unsigned alen,
+                       char *src, unsigned srclen, char *dst)
 {
     aez_ctx_t ctx;
-    (void)nsec;
-    if (clen) *clen = mlen+16;
-    aez_setup((unsigned char *)k, 48, &ctx);
-    aez_encrypt(&ctx, (char *)npub, 12,
-                 (char *)ad, (unsigned)adlen, 16,
-                 (char *)m, (unsigned)mlen, (char *)c);
+    aez_setup(key, (unsigned)48, &ctx);
+    aez_encrypt(&ctx, nonce, (unsigned)16,
+                ad, adlen, alen,
+                src, srclen, dst);
+}
+
+void aez_setup_decrypt(char *key, char *nonce,
+                       char *ad, unsigned adlen, unsigned alen,
+                       char *src, unsigned srclen, char *dst)
+{
+    aez_ctx_t ctx;
+    aez_setup(key, (unsigned)48, &ctx);
+    aez_decrypt(&ctx, nonce, (unsigned)16,
+                ad, adlen, alen,
+                src, srclen, dst);
+}
+
+/* // this example main function works so wtf doesn't my rust ffi test work?
+   // gcc -g -O0 -Wall -msse2 -msse -march=native -maes encrypt.c
+   // #include <string.h>
+   // #include <stdio.h>
+
+int main (void)
+{
+    unsigned char key[48];
+    strcpy( (char*) key, "Hello World" );
+
+    unsigned char nonce[16];
+    unsigned char ad[16];
+    unsigned adlen = 0;
+    unsigned alen = 0;
+
+    unsigned char src[200];
+    unsigned srclen = 200;
+    strcpy( (char*) src, "wtf bbq wtf" );
+
+    unsigned char dst[200];
+    unsigned char dst2[200];
+
+
+    aez_setup_encrypt(key, nonce, ad, adlen, alen,
+                      src, srclen, dst);
+    aez_setup_decrypt(key, nonce, ad, adlen, alen,
+                      dst, srclen, dst2);
+
+    printf("plaintext! %s\n", dst2);
     return 0;
 }
-
-int crypto_aead_decrypt(
-    unsigned char *m,unsigned long long *mlen,
-    unsigned char *nsec,
-    const unsigned char *c,unsigned long long clen,
-    const unsigned char *ad,unsigned long long adlen,
-    const unsigned char *npub,
-    const unsigned char *k
-)
-{
-    aez_ctx_t ctx;
-    (void)nsec;
-    if (mlen) *mlen = clen-16;
-    aez_setup((unsigned char *)k, 48, &ctx);
-    return aez_decrypt(&ctx, (char *)npub, 12,
-                 (char *)ad, (unsigned)adlen, 16,
-                 (char *)c, (unsigned)clen, (char *)m);
-}
+*/
