@@ -35,7 +35,7 @@ mod tests {
     fn test_bindings1() {
         let key_str = "f499be9a1dd859c1471156baed30ba7b35f19abf8e94a7868410a79ce61bdb5b995bd0e69592ff677875e5d693388e3d";
         let key = key_str.from_hex().unwrap();
-        let nonce_str = "f44b512767cd889f2abea615";
+        let nonce_str = "facef44b512767cd889f2abea615";
         let nonce = nonce_str.from_hex().unwrap();
         let s = String::from("We must defend our own privacy if we expect to have any. \
                               We must come together and create systems which allow anonymous transactions to take place. \
@@ -51,10 +51,10 @@ mod tests {
         let mut plaintext = vec![0u8; payload.len()];
         unsafe {
             aez_setup_encrypt(key.as_ptr(), nonce.as_ptr(),
-                              &ad as *const u8, 0, 0,
+                              ptr::null(), 0, 0,
                               payload.as_ptr(), payload.len(), ciphertext.as_mut_ptr());
             aez_setup_decrypt(key.as_ptr(), nonce.as_ptr(),
-                              &ad as *const u8, 0, 0,
+                              ptr::null(), 0, 0,
                               ciphertext.as_ptr(), ciphertext.len(), plaintext.as_mut_ptr());
             let out_str = String::from_utf8_lossy(&plaintext);
             assert_eq!(payload.as_slice(), plaintext.as_slice());
