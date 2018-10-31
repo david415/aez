@@ -1,6 +1,6 @@
 [package]
 name = "aez"
-version = "0.0.0"
+version = "0.0.1"
 authors = ["David Stainton <dawuud@riseup.net>"]
 description = "Rust wrapper for AEZ wide block cipher written in C."
 homepage = "https://github.com/david415/aez"
@@ -15,8 +15,7 @@ build = "build.rs"
 [dependencies]
 libc = "0.2"
 blake2b = "0.7.0"
-byteorder = "1.2.6"
-serde = "1.0.80"
+serde = "1.0.80" # for test vectors
 serde_json = "1.0.32"
 serde_derive = "1.0.80"
 
