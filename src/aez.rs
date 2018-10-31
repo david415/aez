@@ -18,8 +18,12 @@ use std::ptr;
 
 use super::aez_binding::{aez_setup_encrypt, aez_setup_decrypt};
 
+pub const AEZ_KEY_SIZE: usize = 48;
+pub const AEZ_NONCE_SIZE: usize = 16;
 
-pub fn encrypt(key: &[u8; 48], nonce: &[u8; 16], mesg: &Vec<u8>) -> Vec<u8> {
+
+
+pub fn encrypt(key: &[u8; AEZ_KEY_SIZE], nonce: &[u8; AEZ_NONCE_SIZE], mesg: &Vec<u8>) -> Vec<u8> {
     let mut ciphertext = vec![0u8; mesg.len()];
     unsafe {
         aez_setup_encrypt(key as *const u8, nonce as *const u8, ptr::null(), 0, 0, mesg.as_ptr(), mesg.len(), ciphertext.as_mut_ptr());
@@ -28,7 +32,7 @@ pub fn encrypt(key: &[u8; 48], nonce: &[u8; 16], mesg: &Vec<u8>) -> Vec<u8> {
 }
 
 
-pub fn decrypt(key: &[u8; 48], nonce: &[u8; 16], mesg: &Vec<u8>) -> Vec<u8> {
+pub fn decrypt(key: &[u8; AEZ_KEY_SIZE], nonce: &[u8; AEZ_NONCE_SIZE], mesg: &Vec<u8>) -> Vec<u8> {
     let mut plaintext = vec![0u8; mesg.len()];
     unsafe {
         aez_setup_decrypt(key as *const u8, nonce as *const u8, ptr::null(), 0, 0, mesg.as_ptr(), mesg.len(), plaintext.as_mut_ptr());
@@ -59,9 +63,9 @@ mod tests {
         let string_bytes = s.into_bytes();
         let mut payload = vec![0u8; 500];
         payload[0.._s_len].copy_from_slice(&string_bytes);
-        let mut key_array = [0u8; 48];
+        let mut key_array = [0u8; AEZ_KEY_SIZE];
         key_array.clone_from_slice(&key);
-        let mut nonce_array = [0u8; 16];
+        let mut nonce_array = [0u8; AEZ_NONCE_SIZE];
         nonce_array.clone_from_slice(&nonce);
         let ciphertext = encrypt(&key_array, &nonce_array, &payload);
         let plaintext = decrypt(&key_array, &nonce_array, &ciphertext);
