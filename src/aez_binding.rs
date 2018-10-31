@@ -14,6 +14,10 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+extern crate libc;
+
+use self::libc::c_int;
+
 extern "C" {
     pub fn aez_setup_encrypt(key: *const u8, nonce: *const u8,
                              ad: *const u8, adlen: usize, alen: usize,
@@ -21,7 +25,7 @@ extern "C" {
 
     pub fn aez_setup_decrypt(key: *const u8, nonce: *const u8,
                              ad: *const u8, adlen: usize, alen: usize,
-                             src: *const u8, srclen: usize, dst: *mut u8);
+                             src: *const u8, srclen: usize, dst: *mut u8) -> c_int;
 }
 
 #[cfg(test)]

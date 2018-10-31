@@ -14,13 +14,16 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+extern crate libc;
+
 use std::ptr;
+use self::libc::c_int;
 
 use super::aez_binding::{aez_setup_encrypt, aez_setup_decrypt};
+use super::error::AezDecryptionError;
 
 pub const AEZ_KEY_SIZE: usize = 48;
 pub const AEZ_NONCE_SIZE: usize = 16;
-
 
 
 pub fn encrypt(key: &[u8; AEZ_KEY_SIZE], nonce: &[u8; AEZ_NONCE_SIZE], mesg: &Vec<u8>) -> Vec<u8> {
@@ -32,12 +35,16 @@ pub fn encrypt(key: &[u8; AEZ_KEY_SIZE], nonce: &[u8; AEZ_NONCE_SIZE], mesg: &Ve
 }
 
 
-pub fn decrypt(key: &[u8; AEZ_KEY_SIZE], nonce: &[u8; AEZ_NONCE_SIZE], mesg: &Vec<u8>) -> Vec<u8> {
+pub fn decrypt(key: &[u8; AEZ_KEY_SIZE], nonce: &[u8; AEZ_NONCE_SIZE], mesg: &Vec<u8>) -> Result<Vec<u8>, AezDecryptionError> {
     let mut plaintext = vec![0u8; mesg.len()];
+    let mut ret: c_int = 0;
     unsafe {
-        aez_setup_decrypt(key as *const u8, nonce as *const u8, ptr::null(), 0, 0, mesg.as_ptr(), mesg.len(), plaintext.as_mut_ptr());
+        ret = aez_setup_decrypt(key as *const u8, nonce as *const u8, ptr::null(), 0, 0, mesg.as_ptr(), mesg.len(), plaintext.as_mut_ptr());
     }
-    plaintext
+    if ret != 0 {
+        return Err(AezDecryptionError::DecryptionError);
+    }
+    Ok(plaintext)
 }
 
 
@@ -68,7 +75,7 @@ mod tests {
         let mut nonce_array = [0u8; AEZ_NONCE_SIZE];
         nonce_array.clone_from_slice(&nonce);
         let ciphertext = encrypt(&key_array, &nonce_array, &payload);
-        let plaintext = decrypt(&key_array, &nonce_array, &ciphertext);
+        let plaintext = decrypt(&key_array, &nonce_array, &ciphertext).unwrap();
         assert_eq!(payload.as_slice(), plaintext.as_slice());
         //let out_str = String::from_utf8_lossy(&plaintext);
         //println!("plaintext! {}", out_str)

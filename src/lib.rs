@@ -16,6 +16,8 @@
 
 pub mod aez_binding;
 pub mod aez;
+pub mod error;
+
 
 #[macro_use]
 extern crate serde_derive;
