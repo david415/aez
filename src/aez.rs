@@ -125,12 +125,13 @@ mod tests {
             let plaintext = case.m.from_hex().unwrap();
             let ciphertext = case.c.from_hex().unwrap();
 
-            println!("plaintext {} ciphertext {}", plaintext.to_hex(), ciphertext.to_hex());
-            
             let mut key_array = [0u8; AEZ_KEY_SIZE];
             key_array.clone_from_slice(&key);
             let mut nonce_array = [0u8; AEZ_NONCE_SIZE];
             nonce_array.clone_from_slice(&nonce);
+
+            //let case_ciphertext = encrypt(&key_array, &nonce_array, &plaintext);
+            //assert_eq!(case_ciphertext, ciphertext);
 
             let case_plaintext = decrypt(&key_array, &nonce_array, &ciphertext).unwrap();
             assert_eq!(case_plaintext, plaintext);
