@@ -53,7 +53,10 @@ mod tests {
     extern crate rustc_serialize;
 
     use super::*;
-    use self::rustc_serialize::hex::{FromHex};
+    use self::rustc_serialize::hex::{FromHex, ToHex};
+    use std::fs::File;
+    use std::path::PathBuf;
+    use std::io::prelude::*;
 
     #[test]
     fn test_encrypt_decrypt() {
@@ -79,5 +82,62 @@ mod tests {
         assert_eq!(payload.as_slice(), plaintext.as_slice());
         //let out_str = String::from_utf8_lossy(&plaintext);
         //println!("plaintext! {}", out_str)
+    }
+
+    fn get_test_file_path(filename: String) -> PathBuf {
+        let mut path = PathBuf::from(file!());
+        path.pop();
+        path.pop();
+        path.pop();
+        path.push("testdata/");
+        path.push(filename);
+        path
+    }
+
+    fn get_test_data(filename: String) -> String {
+        let extract_tests_path = get_test_file_path(filename);
+        let mut f = File::open(extract_tests_path).unwrap();
+        let mut contents = String::new();
+        f.read_to_string(&mut contents).unwrap();
+        contents
+    }
+
+    #[derive(Serialize, Deserialize, Debug)]
+    struct ExtractTestCase {
+        k: String,
+        nonce: String,
+        data: Vec<String>,
+        tau: u32,
+        m: String,
+        c: String,
+    }
+
+    #[test]
+    fn test_encrypt_no_ad_vectors() {
+        let cases_str = get_test_data("encrypt_no_ad.json".to_string());
+        let cases: Vec<ExtractTestCase> = serde_json::from_str(&cases_str).unwrap();
+        for case in cases {
+            if case.tau != 0 || case.nonce.from_hex().unwrap().len() != 16 {
+                continue
+            }
+            let key = case.k.from_hex().unwrap();
+            let nonce = case.nonce.from_hex().unwrap();
+            let plaintext = case.m.from_hex().unwrap();
+            let ciphertext = case.c.from_hex().unwrap();
+
+            println!("plaintext {} ciphertext {}", plaintext.to_hex(), ciphertext.to_hex());
+            
+            let mut key_array = [0u8; AEZ_KEY_SIZE];
+            key_array.clone_from_slice(&key);
+            let mut nonce_array = [0u8; AEZ_NONCE_SIZE];
+            nonce_array.clone_from_slice(&nonce);
+
+            let case_plaintext = decrypt(&key_array, &nonce_array, &ciphertext).unwrap();
+            assert_eq!(case_plaintext, plaintext);
+            
+            //let case_ciphertext = encrypt(&key_array, &nonce_array, &plaintext);
+            //assert_eq!(case_ciphertext, ciphertext);
+            //let case_plaintext = decrypt(&key_array, &nonce_array, &case_ciphertext).unwrap();
+        }
     }
 }
