@@ -21,7 +21,7 @@ This code has not been formally audited. Use it at your own risk!
 To import `aez`, add the following to the dependencies section of
 your project's `Cargo.toml`:
 ```toml
-aez = "^0.0.1"
+aez = "^0.0.2"
 ```
 Then import the crate as:
 ```rust,no_run
