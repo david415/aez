@@ -4,16 +4,16 @@
 
 The AEZ wide-block cipher: [AEZ](http://web.cs.ucdavis.edu/~rogaway/aez/)
 
+This is a rust crate that wraps Ted Krovetz's AEZv5 implementation
+in C using AES-NI hardware optimizations.
 
 # status
 
-This is a work-in-progress and is NOT ready for use.
+Tests using test vectors pass.
 
 # warning
 
-This code has not been formally audited by a cryptographer. It
-therefore should not be considered safe or correct. Use it at your own
-risk!
+This code has not been formally audited. Use it at your own risk!
 
 
 # usage
