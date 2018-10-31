@@ -914,46 +914,13 @@ void aez_setup_encrypt(char *key, char *nonce,
                 src, srclen, dst);
 }
 
-void aez_setup_decrypt(char *key, char *nonce,
+int aez_setup_decrypt(char *key, char *nonce,
                        char *ad, unsigned adlen, unsigned alen,
                        char *src, unsigned srclen, char *dst)
 {
     aez_ctx_t ctx;
     aez_setup((unsigned char*)key, (unsigned)48, &ctx);
-    aez_decrypt(&ctx, nonce, (unsigned)12,
+    return aez_decrypt(&ctx, nonce, (unsigned)12,
                 ad, adlen, alen,
                 src, srclen, dst);
 }
-
-/* // this example main function works so wtf doesn't my rust ffi test work?
-   // gcc -g -O0 -Wall -msse2 -msse -march=native -maes encrypt.c
-   // #include <string.h>
-   // #include <stdio.h>
-
-int main (void)
-{
-    unsigned char key[48];
-    strcpy( (char*) key, "Hello World" );
-
-    unsigned char nonce[16];
-    unsigned char ad[16];
-    unsigned adlen = 0;
-    unsigned alen = 0;
-
-    unsigned char src[200];
-    unsigned srclen = 200;
-    strcpy( (char*) src, "wtf bbq wtf" );
-
-    unsigned char dst[200];
-    unsigned char dst2[200];
-
-
-    aez_setup_encrypt(key, nonce, ad, adlen, alen,
-                      src, srclen, dst);
-    aez_setup_decrypt(key, nonce, ad, adlen, alen,
-                      dst, srclen, dst2);
-
-    printf("plaintext! %s\n", dst2);
-    return 0;
-}
-*/

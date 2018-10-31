@@ -1,4 +1,4 @@
-// lib.rs - The rust AEZ wrapper implementation.
+// error.rs - AEZ error types
 // Copyright (C) 2018  David Anthony Stainton.
 //
 // This program is free software: you can redistribute it and/or modify
@@ -14,12 +14,35 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-pub mod aez_binding;
-pub mod aez;
-pub mod error;
+//! AEZ error types.
+
+use std::error::Error;
+use std::fmt;
 
 
-#[macro_use]
-extern crate serde_derive;
-extern crate serde;
-extern crate serde_json;
+#[derive(Debug)]
+pub enum AezDecryptionError {
+    DecryptionError,
+}
+
+impl fmt::Display for AezDecryptionError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::AezDecryptionError::*;
+        match *self {
+            DecryptionError => write!(f, "Decryption error."),
+        }
+    }
+}
+
+impl Error for AezDecryptionError {
+    fn description(&self) -> &str {
+        "I'm a AezDecryptionError."
+    }
+
+    fn cause(&self) -> Option<&Error> {
+        use self::AezDecryptionError::*;
+        match *self {
+            DecryptionError => None,
+        }
+    }
+}
