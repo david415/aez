@@ -41,7 +41,6 @@
 /* access to AES4 and AES10, and allows the forcing of MixColumns in the     */
 /* final round. It also defines "u32", used for internal AES keys.           */
 #include "rijndael-alg-fst.h"
-#include "crypto_aead.h"
 
 typedef unsigned char byte;
 
@@ -399,42 +398,3 @@ void Encrypt(byte *K, unsigned kbytes,
         free(X);
     }
 }
-
-/* ------------------------------------------------------------------------- */
-/* aez mapping for CAESAR competition                                        */
-
-int crypto_aead_encrypt(
-    unsigned char *c,unsigned long long *clen,
-    const unsigned char *m,unsigned long long mlen,
-    const unsigned char *ad,unsigned long long adlen,
-    const unsigned char *nsec,
-    const unsigned char *npub,
-    const unsigned char *k
-)
-{
-    byte *AD[] = {(byte*)ad};
-    unsigned adbytes[] = {(unsigned)adlen};
-    (void)nsec;
-    if (clen) *clen = mlen+16;
-    Encrypt((byte*)k, 48, (byte*)npub, 12, AD,
-                adbytes, 1, 16, (byte*)m, mlen, (byte*)c);
-    return 0;
-}
-
-int crypto_aead_decrypt(
-    unsigned char *m,unsigned long long *mlen,
-    unsigned char *nsec,
-    const unsigned char *c,unsigned long long clen,
-    const unsigned char *ad,unsigned long long adlen,
-    const unsigned char *npub,
-    const unsigned char *k
-)
-{
-    byte *AD[] = {(byte*)ad};
-    unsigned adbytes[] = {(unsigned)adlen};
-    (void)nsec;
-    if (mlen) *mlen = clen-16;
-    return Decrypt((byte*)k, 48, (byte*)npub, 12, AD,
-                    adbytes, 1, 16, (byte*)c, clen, (byte*)m);
-}
-
