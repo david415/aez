@@ -19,6 +19,10 @@ extern crate libc;
 use self::libc::c_int;
 
 extern "C" {
+    pub fn Decrypt(K: *const u8, kbytes: usize, N: *const u8, nbytes: usize,
+                   AD: *const u8, adbytes: *const u8, veclen: usize, abytes: usize,
+                   M: *const u8, mbytes: usize, C: *const u8) -> c_int;
+
     pub fn aez_setup_encrypt(key: *const u8, nonce: *const u8,
                              ad: *const u8, adlen: usize, alen: usize,
                              src: *const u8, srclen: usize, dst: *mut u8);
