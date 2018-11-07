@@ -1,6 +1,6 @@
 [package]
 name = "aez"
-version = "0.0.2"
+version = "0.0.3"
 authors = ["David Stainton <dawuud@riseup.net>"]
 description = "Rust wrapper for AEZ wide block cipher written in C."
 homepage = "https://github.com/david415/aez"
