@@ -1,4 +1,4 @@
-// aez.rs - The rust bindings wrapper.
+// aez.rs - The rust bindings for a hardware optimized AEZ implemented in C.
 // Copyright (C) 2018  David Anthony Stainton.
 //
 // This program is free software: you can redistribute it and/or modify
@@ -18,12 +18,24 @@ extern crate libc;
 
 use std::ptr;
 use self::libc::c_int;
-
-use super::aez_binding::{aez_setup_encrypt, aez_setup_decrypt};
 use super::error::AezDecryptionError;
+
 
 pub const AEZ_KEY_SIZE: usize = 48;
 pub const AEZ_NONCE_SIZE: usize = 16;
+
+
+extern "C" {
+    fn aez_setup_encrypt(key: *const u8, nonce: *const u8,
+                         ad: *const u8, adlen: usize, alen: usize,
+                         src: *const u8, srclen: usize, dst: *mut u8);
+
+    fn aez_setup_decrypt(key: *const u8, nonce: *const u8,
+                         ad: *const u8, adlen: usize, alen: usize,
+                         src: *const u8, srclen: usize, dst: *mut u8) -> c_int;
+}
+
+
 
 
 pub fn encrypt(key: &[u8; AEZ_KEY_SIZE], nonce: &[u8; AEZ_NONCE_SIZE], mesg: &Vec<u8>) -> Vec<u8> {
@@ -48,15 +60,38 @@ pub fn decrypt(key: &[u8; AEZ_KEY_SIZE], nonce: &[u8; AEZ_NONCE_SIZE], mesg: &Ve
 }
 
 
+
 #[cfg(test)]
 mod tests {
     extern crate rustc_serialize;
 
     use super::*;
+    use std::ptr;
     use self::rustc_serialize::hex::FromHex;
     use std::fs::File;
     use std::path::PathBuf;
     use std::io::prelude::*;
+
+    #[test]
+    fn test_simple_bindings_usage() {
+        let key_str = "ec6dc9fb5e68dbc2a7615c67baf5b8e472953b84918f1e0c4e01cf43387535d292c4be5657849d84246c7253a3252577";
+        let key = key_str.from_hex().unwrap();
+        let nonce_str = "05ef180b20d561bf6024a4ecf725fc17";
+        let nonce = nonce_str.from_hex().unwrap();
+        let m_str = "82ed7abbe93cb1a7ec2d1072f591c058237ff54fc4d44d86cb07c0620675b56b";
+        let plaintext = m_str.from_hex().unwrap();
+        let mut case_ciphertext = vec![0u8; plaintext.len()];
+        let mut case_plaintext = vec![0u8; plaintext.len()];
+        unsafe {
+            aez_setup_encrypt(key.as_ptr(), nonce.as_ptr(),
+                              ptr::null(), 0, 0,
+                              plaintext.as_ptr(), plaintext.len(), case_ciphertext.as_mut_ptr());
+            aez_setup_decrypt(key.as_ptr(), nonce.as_ptr(),
+                              ptr::null(), 0, 0,
+                              case_ciphertext.as_ptr(), case_ciphertext.len(), case_plaintext.as_mut_ptr());
+            assert_eq!(plaintext.as_slice(), case_plaintext.as_slice());
+        }
+    }
 
     #[test]
     fn test_encrypt_decrypt() {
