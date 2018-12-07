@@ -1,13 +1,13 @@
 [package]
 name = "aez"
-version = "0.0.3"
+version = "0.0.4"
 authors = ["David Stainton <dawuud@riseup.net>"]
 description = "Rust wrapper for AEZ wide block cipher written in C."
 homepage = "https://github.com/david415/aez"
 repository = "https://github.com/david415/aez"
 documentation = "https://docs.rs/aez/"
 readme = "README.md"
-keywords = ["cryptography", "aez"]
+keywords = ["cryptography", "aez", "ffi", "sprp"]
 license = "AGPL-3.0-only"
 links = "aez"
 build = "build.rs"
@@ -15,7 +15,7 @@ build = "build.rs"
 [dependencies]
 libc = "0.2"
 blake2b = "0.7.0"
-serde = "1.0.80" # for test vectors
+serde = "1.0.80" # for test vectors which use a macro which therefore must be loaded from lib.rs
 serde_json = "1.0.32"
 serde_derive = "1.0.80"
 

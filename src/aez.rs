@@ -78,8 +78,12 @@ mod tests {
         let key = key_str.from_hex().unwrap();
         let nonce_str = "05ef180b20d561bf6024a4ecf725fc17";
         let nonce = nonce_str.from_hex().unwrap();
-        let m_str = "82ed7abbe93cb1a7ec2d1072f591c058237ff54fc4d44d86cb07c0620675b56b";
-        let plaintext = m_str.from_hex().unwrap();
+        let plaintext_str = String::from("As computer scientists and cryptographers, we are twice culpable when it
+comes to mass surveillance: computer science created the technologies that
+underlie our communications infrastructure, and that are now turning it into
+an apparatus for surveillance and control; while cryptography contains within it
+the underused potential to help redirect this tragic turn.");
+        let plaintext = plaintext_str.as_bytes();
         let mut case_ciphertext = vec![0u8; plaintext.len()];
         let mut case_plaintext = vec![0u8; plaintext.len()];
         unsafe {
@@ -89,7 +93,7 @@ mod tests {
             aez_setup_decrypt(key.as_ptr(), nonce.as_ptr(),
                               ptr::null(), 0, 0,
                               case_ciphertext.as_ptr(), case_ciphertext.len(), case_plaintext.as_mut_ptr());
-            assert_eq!(plaintext.as_slice(), case_plaintext.as_slice());
+            assert_eq!(plaintext, case_plaintext.as_slice());
         }
     }
 
@@ -104,11 +108,17 @@ mod tests {
         let mut nonce_array = [0u8; AEZ_NONCE_SIZE];
         nonce_array.clone_from_slice(&nonce);
 
-        let m_str = "82ed7abbe93cb1a7ec2d1072f591c058237ff54fc4d44d86cb07c0620675b56b";
-        let c_str = "8adacd91e46ed69d6c7396c0933eb4d5c125b202875e496cb32f49fb3304e489";
-        let plaintext = m_str.from_hex().unwrap();
+        let c_str = "ff2e5f36255d0c2609a13df1b822da4bdc688c344ae818d7b0f19d55f12bdabba2b25587af44104996a0e6f80f667cddb3a004dae49b3010ef593bf117e559b749f6f11e54865c636bbdd14d7d1313e700e9a83c4941c1e4e9a17d8bd15a9a9d2a90e70ceb1d66c4fba68c5ddc521b5a178cc269b910c8271ec9288468d2e048e80ec1ceee8744023ca28dc8ec4abc62735158dfc2c8d3fa4a3b99d268cbdce0e3d3cece217125577a69dc0fb41d52aa7f2520d3b7e785858ac0e4114de0a1cb91feca6c1fb953be61c69a01a1ff5306e2c533d82a63ae69c21e0e68aced3adb557a22a20d298dd8439151b1ea5e7a74e5d42541b232017f800253d58b5603bec2a49fe0ad8fbd5d6551f24be09f854b67237e21dfd7609ab76441840684dad376c9717de1b4214e9475b8f4418120ddd62adb2c04ab20cabb08a827f6fd188430173a4422d127a0c67f2b762be39510dc6191c5bef4094508372e92caaec3f95d9ee64f9a15231c7cfc80cc9a7efb30c5b0062a2b2f0364d8f9d833ff00225cba6d6559aaa521e9ff60ccc4968632177186174e3c17e32b42458206f657958eb33d9452707bf5805926ee4d4704eb5191d9be0d46085045cd9d75590ae67d33b31e9e8028ab4d3ffd86e2d67f782926720670ccae514fb4a211ca10533a0651ec97a162ee8891d6c4fbf3512439d498f0c6905c5aa81b6875359d2f9019bced45afa91a0a48e3fc4ae2ec752bd0af58034155a8c9ceeed9635954d840757e80e3604bdd3b1673fd03c9ef3a395f9408a6c8daa84e950bfc745ed5249f4c6c123c1f3eb1136b510bc7a29f90247109";
         let ciphertext = c_str.from_hex().unwrap();
-
+        let plaintext_str = String::from("I am not optimistic. The figure of the heroic cryptographer sweeping in to
+save the world from totalitarian surveillance is ludicrous. And in a world where
+intelligence agencies stockpile and exploit countless vulnerabilities, obtain CA
+secret keys, subvert software-update mechanisms, infiltrate private companies
+with moles, redirect online discussions in favored directions, and exert enormous
+influence on standards bodies, cryptography alone will be an ineffectual response.
+At best, cryptography might be a tool for creating possibilities within contours
+circumscribed by other forces.");
+        let plaintext = plaintext_str.into_bytes();
         let case_plaintext = decrypt(&key_array, &nonce_array, &ciphertext).unwrap();
         assert_eq!(plaintext, case_plaintext);
     }
